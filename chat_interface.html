@@ -1,0 +1,1817 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Chat Interface - AI Assistant Pro</title>
+    <link rel="stylesheet" href="../css/main.css" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<script type="module">
+(function () {
+  "use strict";
+
+  let isTopWindow = false;       
+  let isPublicPreviewHost = false; 
+  let isPuppeteer = false;       
+
+  try {
+    isTopWindow = window.self === window.top;
+    isPublicPreviewHost =
+      window.self?.location?.host &&
+      (window.self.location.host.includes(".netlify.app") ||
+        window.self.location.host.includes(".public.builtwithrocket.new"));
+    isPuppeteer = navigator?.userAgent?.includes("Puppeteer");
+  } catch (err) {
+    // silent failure if cross-origin or other issues
+  }
+
+  // ----------------------------
+  // Config values parsed from script src query params
+  // - _cfg  -> base endpoint for logs (configUrl)
+  // - _be   -> backend endpoint for preview tracking (backendUrl)
+  // ----------------------------
+  let configUrl = "";
+  let backendUrl = "";
+
+  try {
+    // find <script> that includes "rocket-web.js" and read its src
+    const scriptSrc = (function () {
+      const scripts = document.getElementsByTagName("script");
+      for (let s of scripts) {
+        if (s.src.includes("rocket-web.js")) return s.src;
+      }
+      return null;
+    })();
+
+    // parse query params from that src (if present)
+    const urlObj = new URL(scriptSrc);
+    const params = new URLSearchParams(urlObj?.search);
+
+    configUrl = params.get("_cfg") || "";
+    backendUrl = params.get("_be") || "";
+  } catch (err) {
+    // ignore parse errors
+  }
+
+  // ----------------------------
+  // Helper: send runtime error payload to configUrl + "/log-error"
+  // Does nothing when running in top window or under Puppeteer
+  // ----------------------------
+  function sendRuntimeError(payload) {
+    if (isTopWindow || isPuppeteer) return;
+    try {
+      fetch(`${configUrl}/log-error`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      }).catch(() => {});
+    } catch (e) {
+      // swallow
+    }
+  }
+
+  // ----------------------------
+  // Helper: send console/log payload to configUrl + "/logs"
+  // Does nothing when running in top window or under Puppeteer
+  // ----------------------------
+  function sendLog(payload) {
+    if (isTopWindow || isPuppeteer) return;
+    try {
+      fetch(`${configUrl}/logs`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      }).catch(() => {});
+    } catch (e) {
+      // swallow
+    }
+  }
+
+  // ----------------------------
+  // If this is a public preview host and top window, report preview view to backendUrl.
+  // If backend returns { isPublic: true } it will call the provided callback (often to inject preview UI).
+  // ----------------------------
+  function trackPublicPreview(callback) {
+    if (!isTopWindow || !isPublicPreviewHost || isPuppeteer) return;
+
+    (function (eventPayload, done) {
+      if (!backendUrl) return;
+      try {
+        fetch(`${backendUrl}/preview/v1/track`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(eventPayload),
+        })
+          .then((resp) => {
+            if (!resp.ok) throw new Error("Bad response");
+            return resp.json();
+          })
+          .then((json) => {
+            done(json);
+          })
+          .catch(() => {});
+      } catch (e) {
+        // swallow
+      }
+    })(
+      {
+        event: "Public Preview Viewed",
+        baseUrl: window.location.origin,
+        previewUrl: window.location.href,
+      },
+      (res) => {
+        // if backend marks as public, call the callback (usually to inject badge)
+        if (typeof callback === "function" && res?.isPublic) callback();
+      }
+    );
+  }
+
+  // ----------------------------
+  // Notify parent iframe about pathname changes
+  // (used by Rocket editor to know the page path when previewing inside an iframe)
+  // ----------------------------
+  function notifyParentPathnameChange() {
+    if (window.parent && window.parent !== window) {
+      window.parent.postMessage(
+        { type: "WEB_IFRAME_PATHNAME_CHANGE", pathname: window.location.pathname },
+        "*"
+      );
+    }
+  }
+
+  // ----------------------------
+  // Inject "Built with Rocket.new" badge (preview helper)
+  // This function creates a little UI element and appends to document.body
+  // ----------------------------
+  function injectBuiltWithBadge() {
+    // Disabled to remove "Built with Rocket" badge as per user request
+    return;
+    try {
+      // inject Inter font
+      const link = document.createElement("link");
+      link.rel = "stylesheet";
+      link.href =
+        "https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap";
+      document.head.appendChild(link);
+
+      // container div for badge
+      const badge = document.createElement("div");
+      badge.style.position = "fixed";
+      badge.style.right = "0";
+      badge.style.bottom = "0";
+      badge.style.zIndex = "100000";
+      badge.style.transform = "scale(0.7)";
+      badge.style.display = "block";
+      badge.style.cursor = "pointer";
+      badge.onclick = () => window.open("https://www.rocket.new", "_blank");
+
+      // inner HTML (small card)
+      badge.innerHTML = `
+        <div style="
+          border-radius: 6px;
+          background: #fff;
+          box-shadow: 0px 0px 20px 2px rgba(0,0,0,0.20);
+          display:flex;
+          padding:4px;
+          justify-content:center;
+          align-items:center;
+          gap:8px;
+          flex-direction:column;
+        ">
+          <div style="
+            border:2px solid #000;
+            border-radius:6px;
+            display:flex;
+            flex-direction:column;
+            padding:10px;
+          ">
+            <img src="https://strapi.rocket.new/uploads/rocket_mono_e0dedcb10b.png" style="width:30px;margin:auto auto 8px auto;">
+            <h3 style="text-align:center;font-family:Inter,sans-serif;font-size:12px;font-weight:500;line-height:20px;color:#777;margin:0;">Built with</h3>
+            <h3 style="font-family:Inter,sans-serif;font-size:14px;font-weight:500;line-height:20px;color:#000;margin-top:-4px;margin-bottom:0;">Rocket.new</h3>
+          </div>
+        </div>
+      `;
+
+      document.body.appendChild(badge);
+    } catch (e) {
+      // swallow
+    }
+  }
+
+  // ----------------------------
+  // On load: notify parent that iframe is loading, then notify pathname change and DOMContentLoaded events
+  // and start preview tracking which will call injectBuiltWithBadge if allowed
+  // ----------------------------
+  if (window.parent && window.parent !== window) {
+    window.parent.postMessage({ type: "WEB_IFRAME_LOADING" }, "*");
+  }
+
+  // immediately notify pathname (initial)
+  notifyParentPathnameChange();
+
+  // DOMContentLoaded handler: notify parent and attempt public preview track + possible badge injection
+  document.addEventListener("DOMContentLoaded", () => {
+    if (window.parent && window.parent !== window) {
+      window.parent.postMessage({ type: "WEB_IFRAME_DOCUMENT_LOADED" }, "*");
+    }
+    trackPublicPreview(injectBuiltWithBadge);
+  });
+
+  // ----------------------------
+  // History API hooks (pushState, replaceState, popstate)
+  // After navigation changes notify parent and run preview tracking
+  // ----------------------------
+  if (window.history && window.history.pushState) {
+    const origPushState = window.history.pushState;
+    window.history.pushState = function () {
+      origPushState.apply(this, arguments);
+      notifyParentPathnameChange();
+      trackPublicPreview();
+    };
+
+    const origReplaceState = window.history.replaceState;
+    window.history.replaceState = function () {
+      origReplaceState.apply(this, arguments);
+      notifyParentPathnameChange();
+      trackPublicPreview();
+    };
+
+    window.addEventListener("popstate", function () {
+      notifyParentPathnameChange();
+      trackPublicPreview();
+    });
+  }
+
+  window.addEventListener("hashchange", function () {
+    notifyParentPathnameChange();
+    trackPublicPreview();
+  });
+
+  // ----------------------------
+  // Error reporting hooks
+  // - __COMPONENT_ERROR__ custom handler
+  // - window.onerror
+  // - window.onunhandledrejection
+  // these send payload to configUrl endpoints via sendRuntimeError/sendLog
+  // ----------------------------
+  window.__COMPONENT_ERROR__ = function (err, info) {
+    // construct stack + message
+    let stack = err?.stack || null;
+    let usedFullStack = false;
+    if (stack && stack.includes(err.message)) usedFullStack = true;
+
+    let message = stack ? (usedFullStack ? stack : `${err.message}\n\n${stack}`) : err.message;
+
+    if (info?.componentStack) message += info.componentStack;
+
+    sendRuntimeError({
+      errorType: "RUNTIME_ERROR",
+      message: message,
+      timestamp: new Date().toISOString(),
+    });
+  };
+
+  window.onerror = function (message, src, line, col, errorObj) {
+    const stack = errorObj?.stack || null;
+    const payloadMessage = stack ? `${message}\n\n${stack}` : message;
+
+    // log console error, then send runtime error
+    sendLog({
+      type: "CONSOLE_ERROR",
+      message: payloadMessage,
+      timestamp: new Date().toISOString(),
+      url: window.location.href,
+    });
+
+    sendRuntimeError({
+      errorType: "RUNTIME_ERROR",
+      message: payloadMessage,
+      timestamp: new Date().toISOString(),
+    });
+  };
+
+  window.onunhandledrejection = function (ev) {
+    const reasonMessage = ev.reason?.message || String(ev.reason);
+    const reasonStack = ev.reason?.stack || null;
+    const payload = reasonStack ? `${reasonMessage}\n\n${reasonStack}` : reasonMessage;
+
+    sendLog({
+      type: "CONSOLE_ERROR",
+      message: payload,
+      timestamp: new Date().toISOString(),
+      url: window.location.href,
+    });
+
+    sendRuntimeError({
+      errorType: "RUNTIME_ERROR",
+      message: payload,
+      timestamp: new Date().toISOString(),
+    });
+  };
+
+  // ----------------------------
+  // Console overrides:
+  // Wrap console.error/log/warn/info/debug to capture messages and send via sendLog.
+  // The helper 'formatArgs' converts various argument types into strings.
+  // ----------------------------
+  const origConsoleError = console.error;
+  const origConsoleLog = console.log;
+  const origConsoleWarn = console.warn;
+  const origConsoleInfo = console.info;
+  const origConsoleDebug = console.debug;
+
+  function formatArgs(argsArray) {
+    try {
+      return argsArray
+        ?.map((it) => {
+          if (it instanceof Error) {
+            const st = it?.stack || null;
+            return st ? `${it.message}\n\n${st}` : it.message;
+          }
+          if (it instanceof HTMLElement) {
+            return it.outerHTML;
+          }
+          if (typeof it === "object" && it !== null) return JSON.stringify(it, null, 2);
+          return String(it);
+        })
+        .join(" ");
+    } catch (e) {
+      // fallback
+      return String(argsArray);
+    }
+  }
+
+  console.error = function (...args) {
+    // schedule capture a bit later (100ms)
+    setTimeout(() => {
+      try {
+        const hasErrorBoundary = args.some((a) => a.__ErrorBoundary === true);
+        sendLog({
+          type: "CONSOLE_ERROR",
+          message: formatArgs(args),
+          timestamp: new Date().toISOString(),
+          url: window.location.href,
+        });
+        if (!hasErrorBoundary) {
+          sendRuntimeError({
+            errorType: "RUNTIME_ERROR",
+            message: formatArgs(args),
+            timestamp: new Date().toISOString(),
+          });
+        }
+      } catch (e) {
+        // swallow
+      }
+      // call original
+      origConsoleError.apply(console, args);
+    }, 100);
+  };
+
+  console.log = function (...args) {
+    try {
+      sendLog({
+        type: "CONSOLE_LOG",
+        message: formatArgs(args),
+        timestamp: new Date().toISOString(),
+        url: window.location.href,
+      });
+    } catch (e) {
+      // swallow
+    }
+    origConsoleLog.apply(console, args);
+  };
+
+  console.warn = function (...args) {
+    try {
+      sendLog({
+        type: "CONSOLE_WARN",
+        message: formatArgs(args),
+        timestamp: new Date().toISOString(),
+        url: window.location.href,
+      });
+    } catch (e) {}
+    origConsoleWarn.apply(console, args);
+  };
+
+  console.info = function (...args) {
+    try {
+      sendLog({
+        type: "CONSOLE_INFO",
+        message: formatArgs(args),
+        timestamp: new Date().toISOString(),
+        url: window.location.href,
+      });
+    } catch (e) {}
+    origConsoleInfo.apply(console, args);
+  };
+
+  console.debug = function (...args) {
+    try {
+      sendLog({
+        type: "CONSOLE_DEBUG",
+        message: formatArgs(args),
+        timestamp: new Date().toISOString(),
+        url: window.location.href,
+      });
+    } catch (e) {}
+    origConsoleDebug.apply(console, args);
+  };
+
+  // ----------------------------
+  // Editor / highlighter state variables
+  // - selectedComponentId (w)
+  // - abortController (f) used for cancelling previous toggleEditMode operations
+  // - styleMapping (y) maps UI keys (like MARGIN_TOP) to CSS property names
+  // ----------------------------
+  let selectedComponentId = null;
+  let editModeAbortController = null;
+
+  const styleKeyMap = {
+    MARGIN_TOP: "margin-top",
+    MARGIN_RIGHT: "margin-right",
+    MARGIN_BOTTOM: "margin-bottom",
+    MARGIN_LEFT: "margin-left",
+    PADDING_TOP: "padding-top",
+    PADDING_RIGHT: "padding-right",
+    PADDING_BOTTOM: "padding-bottom",
+    PADDING_LEFT: "padding-left",
+    BACKGROUND_COLOR: "background-color",
+    BORDER_RADIUS_TOP_LEFT: "border-top-left-radius",
+    BORDER_RADIUS_TOP_RIGHT: "border-top-right-radius",
+    BORDER_RADIUS_BOTTOM_RIGHT: "border-bottom-right-radius",
+    BORDER_RADIUS_BOTTOM_LEFT: "border-bottom-left-radius",
+    FONT_SIZE: "font-size",
+    FONT_WEIGHT: "font-weight",
+    TEXT_ALIGN: "text-align",
+    TEXT_COLOR: "color",
+    LINE_HEIGHT: "line-height",
+    TEXT_TRANSFORM: "text-transform",
+    LETTER_SPACING: "letter-spacing",
+    BORDER_STYLE: "border-style",
+    BORDER_COLOR: "border-color",
+    BORDER_RIGHT_WIDTH: "border-right-width",
+    BORDER_BOTTOM_WIDTH: "border-bottom-width",
+    BORDER_LEFT_WIDTH: "border-left-width",
+    BORDER_TOP_WIDTH: "border-top-width",
+    TEXT_CONTENT: "text-content",
+    OBJECT_FIT: "object-fit",
+    IMAGE_SRC: "image-src",
+    DISPLAY: "display",
+    FLEX_DIRECTION: "flex-direction",
+    JUSTIFY_CONTENT: "justify-content",
+    ALIGN_ITEMS: "align-items",
+    GRID_TEMPLATE_COLUMNS: "grid-template-columns",
+    GRID_TEMPLATE_ROWS: "grid-template-rows",
+    GRID_COLUMN_GAP: "grid-column-gap",
+    GRID_ROW_GAP: "grid-row-gap",
+    PLACE_ITEMS: "place-items",
+    FLEX_GAP: "gap",
+  };
+
+  // ----------------------------
+  // Cancel any running abort controller (used when toggling edit mode)
+  // ----------------------------
+  function clearEditModeAbort() {
+    if (editModeAbortController) {
+      try {
+        editModeAbortController.abort();
+      } catch (e) {
+        // swallow
+      } finally {
+        editModeAbortController = null;
+      }
+    }
+  }
+
+  // ----------------------------
+  // Interaction handlers used by editor highlight:
+  // - onMouseOver (T): show highlighter and set hovered attribute
+  // - onMouseOut  (O): hide highlighter and remove hovered attribute
+  // - onClick     (_): select component, gather styles and metadata, post to parent
+  // ----------------------------
+  function onMouseOverHandler(ev) {
+    try {
+      ev.stopPropagation();
+      ev.preventDefault();
+
+      const target = ev.target;
+      // ignore SVG and html/body
+      if (target.ownerSVGElement || target.tagName === "BODY" || target.tagName === "HTML") return;
+
+      const componentId = target.dataset.componentId;
+      if (componentId) {
+        document.querySelectorAll(`[data-component-id="${componentId}"]`).forEach((el) => {
+          el.setAttribute("data-component-hovered", "true");
+        });
+      }
+
+      // position #highlighter UI element if present
+      const rect = target.getBoundingClientRect();
+      const highlighter = document.getElementById("highlighter");
+      if (highlighter) {
+        highlighter.style.display = "block";
+        highlighter.style.top = rect.top - 25 + "px";
+        highlighter.style.left = `${rect.left}px`;
+        highlighter.innerText = target.tagName?.toLowerCase();
+      }
+    } catch (e) {
+      // swallow
+    }
+  }
+
+  function onMouseOutHandler(ev) {
+    try {
+      ev.stopPropagation();
+      ev.preventDefault();
+
+      const highlighter = document.getElementById("highlighter");
+      if (highlighter) highlighter.style.display = "none";
+
+      const componentId = ev.target.dataset?.componentId;
+      if (componentId) {
+        document.querySelectorAll(`[data-component-id="${componentId}"]`).forEach((el) => {
+          el.removeAttribute("data-component-hovered");
+        });
+      } else {
+        // if there's no data-component-id just remove hovered attribute
+        ev.target.removeAttribute("data-component-hovered");
+      }
+    } catch (e) {}
+  }
+
+  function onClickSelectHandler(ev) {
+    try {
+      ev.preventDefault();
+      ev.stopPropagation();
+
+      const target = ev.target;
+
+      // compute styles mapping for the clicked element
+      const computedStyles = (function (el) {
+        if (!el) return {};
+        const computed = window.getComputedStyle(el);
+        const result = {};
+        Object.keys(styleKeyMap).forEach((key) => {
+          result[styleKeyMap[key]] = computed.getPropertyValue(styleKeyMap[key]);
+        });
+        return result;
+      })(target);
+
+      // clear previous selected flag
+      document.querySelectorAll('[data-component-selected="true"]').forEach((el) => {
+        el.removeAttribute("data-component-selected");
+      });
+
+      // set selected attribute for all nodes sharing the same component id
+      const compId = target.dataset.componentId;
+      if (compId) {
+        document.querySelectorAll(`[data-component-id="${compId}"]`).forEach((el) => {
+          el.setAttribute("data-component-selected", "true");
+        });
+      }
+
+      // is the node a plain text node (no children but has childNodes)
+      const isTextNode = target?.children?.length === 0 && target?.childNodes?.length > 0;
+      const isImage = target instanceof HTMLImageElement;
+
+      // set global selectedComponentId
+      selectedComponentId = compId;
+
+      // metadata fields
+      const rawLine = target.dataset?.componentLine ?? "0";
+      const lineNumber = Number(rawLine);
+      const metaData = {
+        filePath: target.dataset?.componentPath ?? "",
+        lineNumber: Number.isNaN(lineNumber) ? 0 : lineNumber,
+        content: target.dataset?.componentContent ?? "",
+        elementName: target.tagName?.toLowerCase() ?? "",
+        componentId: compId ?? "",
+      };
+
+      const payload = {
+        styles: computedStyles,
+        browserClassNames: target.className?.trim?.() || "",
+        metaData: metaData,
+      };
+
+      if (isTextNode) {
+        Object.assign(payload, { textData: { textContent: ev.target?.innerText ?? "" } });
+      }
+      if (isImage) {
+        Object.assign(payload, { imageData: { imageSrc: ev.target.src ?? "" } });
+      }
+
+      // post payload to parent window for editor UI to consume
+      window.parent.postMessage({ type: "SET_INITIAL_DATA", payload: payload }, "*");
+    } catch (e) {
+      // swallow
+    }
+  }
+
+  // ----------------------------
+  // Listen to messages from parent (Rocket editor) for commands:
+  // - SET_EDIT_MODE -> toggle window.toggleEditMode(payload)
+  // - NAVIGATION_REQUEST -> navigate (support Next.js router if available)
+  // - various UPDATE_* messages to update selected component
+  // ----------------------------
+  window.addEventListener("message", function (ev) {
+    try {
+      const data = ev.data;
+
+      if (!data || typeof data !== "object") return;
+
+      // toggle edit mode on SET_EDIT_MODE
+      if (data.type === "SET_EDIT_MODE") {
+        if (typeof window.toggleEditMode === "function") {
+          window.toggleEditMode(data.payload);
+        }
+      }
+
+      // navigation request: try next.router if present, otherwise push state and fire popstate
+      if (data.type === "NAVIGATION_REQUEST") {
+        if (window?.next && window.next?.router) {
+          window.next.router.push(data.url);
+        } else {
+          history.pushState({}, "", data.url);
+          window.dispatchEvent(new PopStateEvent("popstate"));
+        }
+      }
+
+      // If we have a selectedComponentId, handle updates to styles/text/image/classnames
+      if (selectedComponentId) {
+        if (data.type === "UPDATE_STYLES") {
+          const styles = data.payload;
+          document.querySelectorAll(`[data-component-id="${selectedComponentId}"]`).forEach((el) => {
+            Object.assign(el.style, styles);
+          });
+        }
+        if (data.type === "UPDATE_TEXT") {
+          const newText = data.payload?.textContent;
+          if (typeof newText === "string") {
+            const el = document.querySelector(`[data-component-id="${selectedComponentId}"]`);
+            if (el) el.innerText = newText;
+          }
+        }
+        if (data.type === "UPDATE_IMAGE_SRC") {
+          const src = data.payload?.imageSrc;
+          if (typeof src === "string") {
+            const el = document.querySelector(`[data-component-id="${selectedComponentId}"]`);
+            if (el && el.tagName === "IMG") el.src = src;
+          }
+        }
+        if (data.type === "UPDATE_CLASSNAMES") {
+          const payload = data.payload;
+          if (typeof payload?.classNames === "string") {
+            document.querySelectorAll(`[data-component-id="${selectedComponentId}"]`).forEach((el) => {
+              el.className = payload.classNames;
+            });
+          }
+        }
+      }
+    } catch (e) {
+      // swallow
+    }
+  });
+
+  // ----------------------------
+  // toggleEditMode(flag)
+  // - if true: enable edit mode: create AbortController, inject #highlighter style + element,
+  //   add mouseover/mouseout/click listeners (with capture) whose signal is attached to controller
+  // - if false: call clearEditModeAbort() to remove listeners
+  // ----------------------------
+  window.toggleEditMode = function (enable) {
+    if (enable) {
+      // enable edit mode
+      (function () {
+        clearEditModeAbort();
+        try {
+          editModeAbortController = new AbortController();
+          const signal = editModeAbortController.signal;
+
+          // inject #highlighter style if not already present
+          (function () {
+            try {
+              const styleEl = document.createElement("style");
+              styleEl.innerHTML = `
+                #highlighter {
+                  position: fixed;
+                  z-index: 10000;
+                  pointer-events: none;
+                  background-color: #0da2e7;
+                  color: white;
+                  padding: 4px 8px;
+                  border-radius: 4px;
+                  font-size: 14px;
+                  font-weight: bold;
+                  line-height: 1;
+                  white-space: nowrap;
+                  display: none;
+                  box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+                  transition: opacity 0.2s ease-in-out;
+                  margin: 0;
+                }
+                [data-component-hovered] {
+                  position: relative;
+                }
+                [data-component-hovered]::before {
+                  content: '';
+                  position: absolute;
+                  top: 0;
+                  left: 0;
+                  width: 100%;
+                  height: 100%;
+                  border-radius: 0px;
+                  outline: 1px dashed #0da2e7 !important;
+                  outline-offset: 0 !important;
+                  background-color: #0da2e71a !important;
+                  z-index: 10000;
+                  pointer-events: none;
+                }
+                [data-component-selected] {
+                  position: relative;
+                }
+                [data-component-selected]::before {
+                  content: '';
+                  position: absolute;
+                  top: 0;
+                  left: 0;
+                  width: 100%;
+                  height: 100%;
+                  border-radius: 0px;
+                  outline: 1px dashed #0da2e7 !important;
+                  outline-offset: 3px !important;
+                  transition: outline-offset 0.2s ease-in-out;
+                  z-index: 10000;
+                  pointer-events: none;
+                }
+                [data-component-selected][contenteditable] {
+                  outline: none !important;
+                }
+                [data-component-hovered][data-full-width]::before,
+                [data-component-selected][data-full-width]::before {
+                  outline-offset: -5px !important;
+                }
+              `;
+              // insert style near first existing <link rel="stylesheet"> if any, otherwise at top of head
+              const firstLink = document.head.querySelectorAll('link[rel="stylesheet"]');
+              if (firstLink.length > 0) {
+                document.head.insertBefore(styleEl, firstLink[0]);
+              } else {
+                const firstStyle = document.head.querySelectorAll("style");
+                if (firstStyle.length > 0) document.head.insertBefore(styleEl, firstStyle[0]);
+                else document.head.appendChild(styleEl);
+              }
+            } catch (e) {
+              // swallow
+            }
+          })();
+
+          // create highlighter element if not exists
+          if (!document.getElementById("highlighter")) {
+            const high = document.createElement("div");
+            high.id = "highlighter";
+            const bodyEl = document.body || document.getElementsByTagName("body")[0];
+            if (bodyEl) bodyEl.appendChild(high);
+          }
+
+          // add listeners (with capture) and attach signal so they are removed when controller aborts
+          document.addEventListener("mouseover", onMouseOverHandler, { capture: true, signal: signal });
+          document.addEventListener("mouseout", onMouseOutHandler, { capture: true, signal: signal });
+          document.addEventListener("click", onClickSelectHandler, { capture: true, signal: signal });
+        } catch (e) {
+          // swallow any error while enabling
+        }
+      })();
+    } else {
+      // disable edit mode - abort listeners
+      clearEditModeAbort();
+    }
+  };
+
+  // ----------------------------
+  // User interaction tracking
+  // - function buildInteraction(eventName, eventObj) computes element info, viewport, mouse position, bounding rect when available
+  // - It posts messages to parent: { type: "USER_INTERACTION", payload: {...} }
+  // - Debounce for mousemove via a small setTimeout (10ms)
+  // ----------------------------
+  (function () {
+    // utility: build element descriptor (position, viewport, scroll, mouse) from a DOM element + event
+    function buildDescriptor(targetOrDocument, ev) {
+      try {
+        const isDocumentRoot = targetOrDocument === window || targetOrDocument === document || targetOrDocument === document.documentElement;
+        const viewportWidth = window.innerWidth || document.documentElement.clientWidth;
+        const viewportHeight = window.innerHeight || document.documentElement.clientHeight;
+        const scrollX = window.scrollX;
+        const scrollY = window.scrollY;
+        let mouse = null;
+
+        // if we have a mouse/touch event, get coordinates relative to viewport and page
+        if (ev) {
+          const clientX = ev.clientX || ev.touches?.[0]?.clientX;
+          const clientY = ev.clientY || ev.touches?.[0]?.clientY;
+          if (clientX !== undefined && clientY !== undefined) {
+            mouse = {
+              viewport: { x: Math.round(clientX), y: Math.round(clientY) },
+              page: { x: Math.round(clientX + scrollX), y: Math.round(clientY + scrollY) },
+            };
+          }
+        }
+
+        // If it's root document, return document-level descriptor
+        if (isDocumentRoot) {
+          return {
+            tag: "document",
+            id: "",
+            position: { x: scrollX, y: scrollY, width: viewportWidth, height: viewportHeight },
+            viewport: { width: viewportWidth, height: viewportHeight },
+            scroll: { x: scrollX, y: scrollY },
+            mouse: mouse,
+          };
+        }
+
+        // otherwise compute bounding rect
+        if (!targetOrDocument?.getBoundingClientRect) return null;
+        const rect = targetOrDocument.getBoundingClientRect();
+        return {
+          tag: targetOrDocument.tagName?.toLowerCase() || "",
+          id: targetOrDocument.id || "",
+          position: {
+            x: Math.round(rect.left + scrollX),
+            y: Math.round(rect.top + scrollY),
+            width: Math.round(rect.width),
+            height: Math.round(rect.height),
+          },
+          viewport: { width: viewportWidth, height: viewportHeight },
+          scroll: { x: scrollX, y: scrollY },
+          mouse: mouse,
+        };
+      } catch (e) {
+        return null;
+      }
+    }
+
+    // main event sender: builds descriptor and posts to parent
+    function sendInteraction(eventType, ev) {
+      try {
+        const descriptor = buildDescriptor(ev.target || ev.srcElement, ev);
+        if (!descriptor) return;
+        const payload = {
+          eventType: eventType,
+          timestamp: new Date().toISOString(),
+          element: descriptor,
+          page: window.location.pathname,
+        };
+        window.parent.postMessage({ type: "USER_INTERACTION", payload: payload }, "*");
+      } catch (e) {
+        // swallow
+      }
+    }
+
+    // debounce wrapper for frequent events (mouse move)
+    const debouncedMouse = (() => {
+      let timer;
+      return function (...args) {
+        clearTimeout(timer);
+        timer = setTimeout(() => {
+          clearTimeout(timer);
+          sendInteraction("mousemove", ...args);
+        }, 10);
+      };
+    })();
+
+    // register event listeners for many interactions
+    document.addEventListener("mousemove", debouncedMouse);
+    document.addEventListener("click", (ev) => sendInteraction("click", ev));
+    document.addEventListener("dblclick", (ev) => sendInteraction("dblclick", ev));
+    document.addEventListener("mouseenter", (ev) => sendInteraction("mouseenter", ev));
+    document.addEventListener("mouseleave", (ev) => sendInteraction("mouseleave", ev));
+    document.addEventListener("touchstart", (ev) => sendInteraction("touchstart", ev));
+    document.addEventListener("touchmove", (ev) => sendInteraction("touchmove", ev));
+    document.addEventListener("touchend", (ev) => sendInteraction("touchend", ev));
+    document.addEventListener("keydown", (ev) => sendInteraction("keydown", ev));
+
+    // focusin/focusout for input-like elements
+    const interactiveSelectors = ["input", "textarea", "select", "button", '[contenteditable="true"]'];
+    document.addEventListener("focusin", (ev) => {
+      try {
+        if (interactiveSelectors.some((sel) => ev.target.matches(sel))) sendInteraction("focus", ev);
+      } catch (e) {}
+    });
+    document.addEventListener("focusout", (ev) => {
+      try {
+        if (interactiveSelectors.some((sel) => ev.target.matches(sel))) sendInteraction("blur", ev);
+      } catch (e) {}
+    });
+
+    // helper to emit scroll events only for elements that are scrollable or for window/document
+    const makeScrollEmitter = (eventName) => (ev) => {
+      try {
+        const tgt = ev.target;
+        if (!tgt) return;
+        // only emit if target is document/window or scrollable element
+        if (tgt === document || tgt === document.documentElement || tgt === window || tgt.scrollHeight > tgt.clientHeight || tgt.scrollWidth > tgt.clientWidth) {
+          sendInteraction(eventName, ev);
+        }
+      } catch (e) {}
+    };
+
+    const emitScroll = makeScrollEmitter("scroll");
+    const emitScrollEnd = makeScrollEmitter("scrollend");
+
+    // attach scroll listeners globally and iterate through existing elements to attach for scrollable elements
+    function attachScrollListeners() {
+      try {
+        window.addEventListener("scroll", emitScroll, { passive: true });
+        window.addEventListener("scrollend", emitScrollEnd, { passive: true });
+        // for each element that can scroll, add listeners
+        document.querySelectorAll("*").forEach((el) => {
+          try {
+            if (el.scrollHeight > el.clientHeight || el.scrollWidth > el.clientWidth) {
+              el.addEventListener("scroll", emitScroll, { passive: true });
+              el.addEventListener("scrollend", emitScrollEnd, { passive: true });
+            }
+          } catch (e) {}
+        });
+      } catch (e) {
+        // swallow
+      }
+    }
+
+    // initial attach and also re-attach when DOM mutates
+    attachScrollListeners();
+    new MutationObserver(() => {
+      attachScrollListeners();
+    }).observe(document.body, { childList: true, subtree: true });
+  })(); // end interaction tracking IIFE
+
+  // ----------------------------
+  // End of main script wrapper
+  // ----------------------------
+})(); // IIFE end
+
+</script>
+</head>
+<body class="bg-animated-gradient text-text-primary overflow-hidden">
+    <!-- Navigation Header -->
+    <nav class="bg-white border-b border-border sticky top-0 z-50">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between items-center h-16">
+                <!-- Logo -->
+                <div class="flex items-center">
+                    <svg class="w-8 h-8 text-primary mr-3" viewBox="0 0 32 32" fill="currentColor">
+                        <path d="M16 2L3 7v10c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V7L16 2z"/>
+                        <circle cx="16" cy="12" r="3" fill="white"/>
+                        <path d="M16 16l-2 6h4l-2-6z" fill="white"/>
+                    </svg>
+                    <span class="text-xl font-bold text-primary">AI Assistant Pro</span>
+                </div>
+
+                <!-- Desktop Navigation -->
+                <div class="hidden md:flex items-center space-x-8">
+                    <a href="homepage.html" class="text-text-secondary hover:text-primary animation-swift">Home</a>
+                    <a href="chat_interface.html" class="text-primary font-semibold">Chat</a>
+                    <a href="features_performance.html" class="text-text-secondary hover:text-primary animation-swift">Features</a>
+                    <a href="user_dashboard.html" class="text-text-secondary hover:text-primary animation-swift">Dashboard</a>
+                    <a href="api_documentation.html" class="text-text-secondary hover:text-primary animation-swift">API</a>
+                    <a href="trust_security.html" class="text-text-secondary hover:text-primary animation-swift">Security</a>
+                </div>
+
+                <!-- Performance Indicator & Actions -->
+                <div class="flex items-center space-x-4">
+                    <div class="hidden md:flex items-center space-x-2 bg-accent-50 px-3 py-2 rounded-lg">
+                        <div class="w-2 h-2 bg-accent rounded-full animate-pulse"></div>
+                        <span class="performance-metric text-sm">1.8s avg</span>
+                    </div>
+                    <button class="btn-secondary text-sm px-4 py-2" onclick="exportConversation()">Export</button>
+                    <button class="md:hidden p-2 text-text-secondary" onclick="toggleSidebar()">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Chat Interface -->
+    <div class="flex h-screen bg-background">
+        <!-- Sidebar - Conversation History -->
+        <div id="sidebar" class="w-80 bg-white border-r border-border flex flex-col transform transition-transform duration-300 md:translate-x-0 -translate-x-full fixed md:relative z-40 h-full">
+            <!-- Sidebar Header -->
+            <div class="p-4 border-b border-border">
+                <div class="flex items-center justify-between mb-4">
+                    <h2 class="text-lg font-semibold">Conversations</h2>
+                    <button class="btn-primary text-sm px-3 py-2" onclick="startNewConversation()">
+                        <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+                        </svg>
+                        New Chat
+                    </button>
+                </div>
+                
+                <!-- Search Bar -->
+                <div class="relative">
+                    <input type="text" placeholder="Search conversations..." class="input-field pl-10 text-sm" id="searchInput" />
+                    <svg class="w-4 h-4 text-text-secondary absolute left-3 top-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+                    </svg>
+                </div>
+            </div>
+
+            <!-- Conversation Categories -->
+            <div class="p-4 border-b border-border">
+                <div class="flex space-x-2">
+                    <button class="px-3 py-1 bg-primary text-white rounded-full text-sm font-medium">All</button>
+                    <button class="px-3 py-1 bg-surface text-text-secondary rounded-full text-sm hover:bg-secondary-200 animation-swift">Today</button>
+                    <button class="px-3 py-1 bg-surface text-text-secondary rounded-full text-sm hover:bg-secondary-200 animation-swift">Starred</button>
+                </div>
+            </div>
+
+            <!-- Conversation List -->
+            <div class="flex-1 overflow-y-auto">
+                <div class="p-2 space-y-2">
+                    <!-- Active Conversation -->
+                    <div class="conversation-item active p-3 rounded-lg bg-primary-50 border-l-4 border-primary cursor-pointer">
+                        <div class="flex items-start justify-between">
+                            <div class="flex-1">
+                                <h3 class="font-medium text-sm text-primary mb-1">Marketing Strategy Discussion</h3>
+                                <p class="text-xs text-text-secondary line-clamp-2">Help me create a comprehensive marketing strategy for Q1...</p>
+                                <div class="flex items-center justify-between mt-2">
+                                    <span class="text-xs text-text-secondary">2 min ago</span>
+                                    <div class="flex items-center space-x-1">
+                                        <span class="performance-metric text-xs">2.1s</span>
+                                        <svg class="w-3 h-3 text-accent" fill="currentColor" viewBox="0 0 20 20">
+                                            <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
+                                        </svg>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Recent Conversations -->
+                    <div class="conversation-item p-3 rounded-lg hover:bg-surface cursor-pointer animation-swift">
+                        <div class="flex items-start justify-between">
+                            <div class="flex-1">
+                                <h3 class="font-medium text-sm mb-1">Python Code Review</h3>
+                                <p class="text-xs text-text-secondary line-clamp-2">Can you review this React component and suggest improvements...</p>
+                                <div class="flex items-center justify-between mt-2">
+                                    <span class="text-xs text-text-secondary">1 hour ago</span>
+                                    <span class="performance-metric text-xs">1.9s</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="conversation-item p-3 rounded-lg hover:bg-surface cursor-pointer animation-swift">
+                        <div class="flex items-start justify-between">
+                            <div class="flex-1">
+                                <h3 class="font-medium text-sm mb-1">Creative Writing Session</h3>
+                                <p class="text-xs text-text-secondary line-clamp-2">Let's brainstorm ideas for a sci-fi short story...</p>
+                                <div class="flex items-center justify-between mt-2">
+                                    <span class="text-xs text-text-secondary">3 hours ago</span>
+                                    <div class="flex items-center space-x-1">
+                                        <span class="performance-metric text-xs">2.3s</span>
+                                        <svg class="w-3 h-3 text-warning" fill="currentColor" viewBox="0 0 20 20">
+                                            <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"/>
+                                        </svg>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="conversation-item p-3 rounded-lg hover:bg-surface cursor-pointer animation-swift">
+                        <div class="flex items-start justify-between">
+                            <div class="flex-1">
+                                <h3 class="font-medium text-sm mb-1">Data Analysis Help</h3>
+                                <p class="text-xs text-text-secondary line-clamp-2">Analyze this customer feedback dataset and identify trends...</p>
+                                <div class="flex items-center justify-between mt-2">
+                                    <span class="text-xs text-text-secondary">Yesterday</span>
+                                    <span class="performance-metric text-xs">1.7s</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="conversation-item p-3 rounded-lg hover:bg-surface cursor-pointer animation-swift">
+                        <div class="flex items-start justify-between">
+                            <div class="flex-1">
+                                <h3 class="font-medium text-sm mb-1">Business Plan Review</h3>
+                                <p class="text-xs text-text-secondary line-clamp-2">Review my startup business plan and provide feedback...</p>
+                                <div class="flex items-center justify-between mt-2">
+                                    <span class="text-xs text-text-secondary">2 days ago</span>
+                                    <span class="performance-metric text-xs">2.4s</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Sidebar Footer -->
+            <div class="p-4 border-t border-border">
+                <div class="flex items-center justify-between text-sm text-text-secondary">
+                    <span>Conversations: ∞</span>
+                    <span class="performance-metric">Avg: 2.1s</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Chat Area -->
+        <div class="flex-1 flex flex-col animate-float">
+            <!-- Chat Header -->
+            <div class="bg-white border-b border-border p-4">
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center space-x-3">
+                        <button class="md:hidden p-2 text-text-secondary" onclick="toggleSidebar()">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/>
+                            </svg>
+                        </button>
+                        <div>
+                            <h1 class="text-lg font-semibold">Marketing Strategy Discussion</h1>
+                            <p class="text-sm text-text-secondary">AI Assistant Pro • Unlimited conversation</p>
+                        </div>
+                    </div>
+                    
+                    <!-- Advanced Features Toggle -->
+                    <div class="flex items-center space-x-2">
+                        <button class="p-2 text-text-secondary hover:text-primary animation-swift" title="Voice Input" onclick="toggleVoiceInput()">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"/>
+                            </svg>
+                        </button>
+                        <button class="p-2 text-text-secondary hover:text-primary animation-swift" title="Branch Conversation" onclick="branchConversation()">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+                            </svg>
+                        </button>
+                        <button class="p-2 text-text-secondary hover:text-primary animation-swift" title="Share Conversation" onclick="shareConversation()">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.367 2.684 3 3 0 00-5.367-2.684z"/>
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Chat Messages Area -->
+            <div class="flex-1 overflow-y-auto p-4 space-y-6" id="chatMessages">
+                <!-- User Message -->
+                <div class="flex justify-end">
+                    <div class="chat-bubble chat-bubble-user max-w-2xl animate-fade-in">
+                        <p>I need help creating a comprehensive marketing strategy for Q1 2025. My company is a B2B SaaS platform focused on project management tools. We're looking to increase our market share by 25% and improve customer retention by 15%. What key elements should I focus on?</p>
+                        <div class="text-xs text-primary-200 mt-2 font-mono">Sent at 17:48</div>
+                    </div>
+                </div>
+
+                <!-- AI Response -->
+                <div class="flex justify-start">
+                    <div class="chat-bubble chat-bubble-ai max-w-2xl animate-fade-in">
+                        <div class="flex items-center justify-between mb-2">
+                            <div class="flex items-center space-x-2">
+                                <svg class="w-5 h-5 text-accent" viewBox="0 0 32 32" fill="currentColor">
+                                    <path d="M16 2L3 7v10c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V7L16 2z"/>
+                                    <circle cx="16" cy="12" r="3" fill="white"/>
+                                    <path d="M16 16l-2 6h4l-2-6z" fill="white"/>
+                                </svg>
+                                <span class="text-sm font-medium text-accent">AI Assistant Pro</span>
+                            </div>
+                            <div class="performance-metric text-xs">Response: 2.1s</div>
+                        </div>
+                        
+                        <div class="prose prose-sm max-w-none">
+                            <p>Excellent goals! Here's a comprehensive Q1 2025 marketing strategy framework for your B2B SaaS project management platform:</p>
+                            
+                            <h4 class="font-semibold text-text-primary mt-4 mb-2">🎯 Core Strategy Pillars</h4>
+                            <ul class="list-disc list-inside space-y-1">
+                                <li><strong>Market Penetration:</strong> Target mid-market companies (50-500 employees) transitioning from basic tools</li>
+                                <li><strong>Customer Success:</strong> Implement proactive onboarding and success programs</li>
+                                <li><strong>Content Authority:</strong> Position as thought leaders in project management best practices</li>
+                                <li><strong>Partnership Ecosystem:</strong> Integrate with complementary tools (Slack, Microsoft, etc.)</li>
+                            </ul>
+
+                            <h4 class="font-semibold text-text-primary mt-4 mb-2">📈 Growth Initiatives</h4>
+                            <ul class="list-disc list-inside space-y-1">
+                                <li>Launch "PM Mastery" webinar series (weekly, targeting 500+ attendees)</li>
+                                <li>Create interactive ROI calculator for project management efficiency</li>
+                                <li>Develop case study library showcasing 25% productivity improvements</li>
+                                <li>Implement referral program with 30-day free trial extensions</li>
+                            </ul>
+
+                            <h4 class="font-semibold text-text-primary mt-4 mb-2">🔄 Retention Strategy</h4>
+                            <ul class="list-disc list-inside space-y-1">
+                                <li>Personalized onboarding journeys based on company size and industry</li>
+                                <li>Quarterly business reviews with key accounts</li>
+                                <li>Feature adoption campaigns targeting underutilized capabilities</li>
+                                <li>Customer advisory board for product feedback and loyalty building</li>
+                            </ul>
+                        </div>
+
+                        <div class="flex items-center justify-between mt-4 pt-3 border-t border-border-light">
+                            <div class="flex space-x-2">
+                                <button class="text-xs text-text-secondary hover:text-primary animation-swift" onclick="copyMessage(this)">Copy</button>
+                                <button class="text-xs text-text-secondary hover:text-primary animation-swift" onclick="continueConversation()">Continue</button>
+                                <button class="text-xs text-text-secondary hover:text-primary animation-swift" onclick="regenerateResponse()">Regenerate</button>
+                            </div>
+                            <div class="text-xs text-text-secondary font-mono">17:48 • 2.1s</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- User Follow-up -->
+                <div class="flex justify-end">
+                    <div class="chat-bubble chat-bubble-user max-w-2xl animate-fade-in">
+                        <p>This is great! Can you help me create a detailed timeline for implementing these initiatives over the next 90 days?</p>
+                        <div class="text-xs text-primary-200 mt-2 font-mono">Sent at 17:50</div>
+                    </div>
+                </div>
+
+                <!-- AI Response with Timeline -->
+                <div class="flex justify-start">
+                    <div class="chat-bubble chat-bubble-ai max-w-2xl animate-fade-in">
+                        <div class="flex items-center justify-between mb-2">
+                            <div class="flex items-center space-x-2">
+                                <svg class="w-5 h-5 text-accent" viewBox="0 0 32 32" fill="currentColor">
+                                    <path d="M16 2L3 7v10c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V7L16 2z"/>
+                                    <circle cx="16" cy="12" r="3" fill="white"/>
+                                    <path d="M16 16l-2 6h4l-2-6z" fill="white"/>
+                                </svg>
+                                <span class="text-sm font-medium text-accent">AI Assistant Pro</span>
+                            </div>
+                            <div class="performance-metric text-xs">Response: 1.8s</div>
+                        </div>
+                        
+                        <div class="prose prose-sm max-w-none">
+                            <p>Absolutely! Here's your 90-day implementation roadmap:</p>
+                            
+                            <div class="bg-accent-50 rounded-lg p-4 mt-3">
+                                <h4 class="font-semibold text-accent mb-3">📅 Q1 2025 Implementation Timeline</h4>
+                                
+                                <div class="space-y-4">
+                                    <div class="border-l-4 border-primary pl-4">
+                                        <h5 class="font-medium text-primary">Month 1 (January): Foundation</h5>
+                                        <ul class="text-sm text-text-secondary mt-1 space-y-1">
+                                            <li>• Week 1-2: Set up analytics and tracking systems</li>
+                                            <li>• Week 2-3: Launch customer advisory board recruitment</li>
+                                            <li>• Week 3-4: Develop ROI calculator and first case studies</li>
+                                        </ul>
+                                    </div>
+                                    
+                                    <div class="border-l-4 border-accent pl-4">
+                                        <h5 class="font-medium text-accent">Month 2 (February): Launch</h5>
+                                        <ul class="text-sm text-text-secondary mt-1 space-y-1">
+                                            <li>• Week 1: Launch PM Mastery webinar series</li>
+                                            <li>• Week 2-3: Implement personalized onboarding flows</li>
+                                            <li>• Week 4: Begin partnership integration development</li>
+                                        </ul>
+                                    </div>
+                                    
+                                    <div class="border-l-4 border-warning pl-4">
+                                        <h5 class="font-medium text-warning">Month 3 (March): Scale</h5>
+                                        <ul class="text-sm text-text-secondary mt-1 space-y-1">
+                                            <li>• Week 1-2: Launch referral program</li>
+                                            <li>• Week 2-3: Begin quarterly business reviews</li>
+                                            <li>• Week 4: Analyze results and optimize for Q2</li>
+                                        </ul>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="flex items-center justify-between mt-4 pt-3 border-t border-border-light">
+                            <div class="flex space-x-2">
+                                <button class="text-xs text-text-secondary hover:text-primary animation-swift" onclick="copyMessage(this)">Copy</button>
+                                <button class="text-xs text-text-secondary hover:text-primary animation-swift" onclick="continueConversation()">Continue</button>
+                                <button class="text-xs text-text-secondary hover:text-primary animation-swift" onclick="regenerateResponse()">Regenerate</button>
+                            </div>
+                            <div class="text-xs text-text-secondary font-mono">17:50 • 1.8s</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Typing Indicator (Hidden by default) -->
+                <div class="flex justify-start hidden" id="typingIndicator">
+                    <div class="chat-bubble chat-bubble-ai max-w-md animate-fade-in">
+                        <div class="flex items-center space-x-2">
+                            <svg class="w-5 h-5 text-accent" viewBox="0 0 32 32" fill="currentColor">
+                                <path d="M16 2L3 7v10c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V7L16 2z"/>
+                                <circle cx="16" cy="12" r="3" fill="white"/>
+                                <path d="M16 16l-2 6h4l-2-6z" fill="white"/>
+                            </svg>
+                            <span class="text-sm font-medium text-accent">AI Assistant Pro is thinking...</span>
+                            <div class="flex space-x-1">
+                                <div class="w-2 h-2 bg-accent rounded-full animate-pulse"></div>
+                                <div class="w-2 h-2 bg-accent rounded-full animate-pulse" style="animation-delay: 0.1s"></div>
+                                <div class="w-2 h-2 bg-accent rounded-full animate-pulse" style="animation-delay: 0.2s"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Chat Input Area -->
+            <div class="bg-white border-t border-border p-4">
+                <!-- Smart Suggestions -->
+                <div class="mb-4 hidden" id="smartSuggestions">
+                    <div class="flex flex-wrap gap-2">
+                        <button class="px-3 py-1 bg-surface text-text-secondary rounded-full text-sm hover:bg-secondary-200 animation-swift" onclick="insertSuggestion(this)">
+                            Create a budget breakdown for these initiatives
+                        </button>
+                        <button class="px-3 py-1 bg-surface text-text-secondary rounded-full text-sm hover:bg-secondary-200 animation-swift" onclick="insertSuggestion(this)">
+                            What metrics should I track for success?
+                        </button>
+                        <button class="px-3 py-1 bg-surface text-text-secondary rounded-full text-sm hover:bg-secondary-200 animation-swift" onclick="insertSuggestion(this)">
+                            Help me write the first webinar outline
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Input Container -->
+                <div class="relative">
+                    <div class="flex items-end space-x-3">
+                        <!-- Multi-modal Input Options -->
+                        <div class="flex flex-col space-y-2">
+                            <button class="p-2 text-text-secondary hover:text-primary animation-swift" title="Upload File" onclick="uploadFile()">
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"/>
+                                </svg>
+                            </button>
+                            <button class="p-2 text-text-secondary hover:text-primary animation-swift" title="Voice Input" onclick="toggleVoiceInput()" id="voiceButton">
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"/>
+                                </svg>
+                            </button>
+                        </div>
+
+                        <!-- Text Input -->
+                        <div class="flex-1 relative">
+                            <textarea id="messageInput" placeholder="Ask anything... (unlimited characters)" class="input-field resize-none min-h-[48px] max-h-32 pr-20" rows="1" onkeydown="handleKeyDown(event)" oninput="adjustTextareaHeight(this); updateCharacterCount(this)"></textarea>
+                            
+                            <!-- Character Counter -->
+                            <div class="absolute bottom-2 right-2 text-xs text-text-secondary">
+                                <span id="charCount">0</span> • <span class="performance-metric">Unlimited</span>
+                            </div>
+                        </div>
+
+                        <!-- Send Button -->
+                        <button class="btn-primary px-4 py-3 flex items-center space-x-2" onclick="sendMessage()" id="sendButton">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"/>
+                            </svg>
+                            <span class="hidden sm:inline">Send</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Context Switching Options -->
+                <div class="mt-3 flex items-center justify-between text-sm text-text-secondary">
+                    <div class="flex items-center space-x-4">
+                        <button class="flex items-center space-x-1 hover:text-primary animation-swift" onclick="switchContext()">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"/>
+                            </svg>
+                            <span>Switch Context</span>
+                        </button>
+                        <button class="flex items-center space-x-1 hover:text-primary animation-swift" onclick="clearConversation()">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                            </svg>
+                            <span>Clear</span>
+                        </button>
+                    </div>
+                    <div class="flex items-center space-x-2">
+                        <span>Ctrl+Enter to send</span>
+                        <div class="w-2 h-2 bg-accent rounded-full animate-pulse"></div>
+                        <span class="performance-metric">Ready</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Floating Help Widget -->
+    <div class="fixed bottom-6 right-6 z-50">
+        <button class="bg-primary text-white p-3 rounded-full shadow-modal hover:bg-primary-700 animation-swift" onclick="toggleHelp()" id="helpButton">
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+            </svg>
+        </button>
+        
+        <!-- Help Panel -->
+        <div class="hidden absolute bottom-16 right-0 w-80 bg-white rounded-lg shadow-modal border border-border p-4" id="helpPanel">
+            <h3 class="font-semibold mb-3">Quick Help</h3>
+            <div class="space-y-2 text-sm">
+                <div class="flex items-center space-x-2">
+                    <kbd class="px-2 py-1 bg-surface rounded text-xs">Ctrl+Enter</kbd>
+                    <span>Send message</span>
+                </div>
+                <div class="flex items-center space-x-2">
+                    <kbd class="px-2 py-1 bg-surface rounded text-xs">Ctrl+K</kbd>
+                    <span>Search conversations</span>
+                </div>
+                <div class="flex items-center space-x-2">
+                    <kbd class="px-2 py-1 bg-surface rounded text-xs">Ctrl+N</kbd>
+                    <span>New conversation</span>
+                </div>
+                <div class="flex items-center space-x-2">
+                    <kbd class="px-2 py-1 bg-surface rounded text-xs">Ctrl+/</kbd>
+                    <span>Toggle voice input</span>
+                </div>
+            </div>
+            <div class="mt-4 pt-3 border-t border-border">
+                <a href="api_documentation.html" class="text-primary text-sm hover:underline">View full documentation →</a>
+            </div>
+        </div>
+    </div>
+
+    <!-- System Status Indicator -->
+    <div class="fixed top-20 right-6 z-40 bg-white rounded-lg shadow-modal border border-border p-3 hidden" id="statusIndicator">
+        <div class="flex items-center space-x-2">
+            <div class="w-2 h-2 bg-accent rounded-full animate-pulse"></div>
+            <span class="text-sm text-text-secondary">All systems operational</span>
+            <span class="performance-metric text-sm">99.97% uptime</span>
+        </div>
+    </div>
+
+    <script>
+        // Global variables
+        let isVoiceActive = false;
+        let conversationHistory = [];
+        let currentConversationId = 'marketing-strategy-001';
+
+        // Sidebar toggle for mobile
+        function toggleSidebar() {
+            const sidebar = document.getElementById('sidebar');
+            if (sidebar) {
+                sidebar.classList.toggle('-translate-x-full');
+            }
+        }
+
+        // Auto-resize textarea
+        function adjustTextareaHeight(textarea) {
+            if (textarea) {
+                textarea.style.height = 'auto';
+                textarea.style.height = Math.min(textarea.scrollHeight, 128) + 'px';
+            }
+        }
+
+        // Update character count
+        function updateCharacterCount(textarea) {
+            if (textarea) {
+                const count = textarea.value.length;
+                const charCountElement = document.getElementById('charCount');
+                if (charCountElement) {
+                    charCountElement.textContent = count.toLocaleString();
+                }
+            }
+        }
+
+        // Handle keyboard shortcuts
+        function handleKeyDown(event) {
+            if (event.ctrlKey || event.metaKey) {
+                switch(event.key) {
+                    case 'Enter':
+                        event.preventDefault();
+                        sendMessage();
+                        break;
+                    case 'k':
+                        event.preventDefault();
+                        const searchInput = document.getElementById('searchInput');
+                        if (searchInput) {
+                            searchInput.focus();
+                        }
+                        break;
+                    case 'n':
+                        event.preventDefault();
+                        startNewConversation();
+                        break;
+                    case '/':
+                        event.preventDefault();
+                        toggleVoiceInput();
+                        break;
+                }
+            } else if (event.key === 'Enter' && !event.shiftKey) {
+                event.preventDefault();
+                sendMessage();
+            }
+        }
+
+        // Send message function
+        async function sendMessage() {
+            const input = document.getElementById('messageInput');
+            if (!input) return;
+            
+            const message = input.value.trim();
+            
+            if (!message) return;
+
+            // Add user message to chat
+            addMessageToChat(message, 'user');
+            
+            // Clear input
+            input.value = '';
+            updateCharacterCount(input);
+            adjustTextareaHeight(input);
+            
+            // Show typing indicator
+            showTypingIndicator();
+
+            try {
+                // Call backend search API with GET and query param
+                const response = await fetch(`http://localhost:5000/search?q=${encodeURIComponent(message)}`);
+
+                if (!response.ok) {
+                    throw new Error('Search API error');
+                }
+
+                const data = await response.json();
+                hideTypingIndicator();
+
+                if (data.results && data.results.length > 0) {
+                    // Format search results
+                    const formattedResults = data.results.map(item => {
+                        return `<p><strong><a href="${item.link}" target="_blank" rel="noopener noreferrer">${item.title}</a></strong><br/>${item.snippet}</p>`;
+                    }).join('<hr/>');
+
+                    addMessageToChat(formattedResults, 'ai');
+                } else {
+                    addMessageToChat("No results found from Google Search.", 'ai');
+                }
+            } catch (error) {
+                hideTypingIndicator();
+                addMessageToChat("Error fetching search results.", 'ai');
+                console.error(error);
+            }
+        }
+
+        // Add message to chat
+        function addMessageToChat(message, sender) {
+            const chatMessages = document.getElementById('chatMessages');
+            if (!chatMessages) return;
+            
+            const messageDiv = document.createElement('div');
+            const timestamp = new Date().toLocaleTimeString('en-US', { 
+                hour12: false, 
+                hour: '2-digit', 
+                minute: '2-digit' 
+            });
+
+            if (sender === 'user') {
+                messageDiv.className = 'flex justify-end';
+                messageDiv.innerHTML = `
+                    <div class="chat-bubble chat-bubble-user max-w-2xl animate-fade-in">
+                        <p>${message}</p>
+                        <div class="text-xs text-primary-200 mt-2 font-mono">Sent at ${timestamp}</div>
+                    </div>
+                `;
+            } else {
+                const responseTime = (Math.random() * 1.5 + 1.5).toFixed(1);
+                messageDiv.className = 'flex justify-start';
+                messageDiv.innerHTML = `
+                    <div class="chat-bubble chat-bubble-ai max-w-2xl animate-fade-in">
+                        <div class="flex items-center justify-between mb-2">
+                            <div class="flex items-center space-x-2">
+                                <svg class="w-5 h-5 text-accent" viewBox="0 0 32 32" fill="currentColor">
+                                    <path d="M16 2L3 7v10c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V7L16 2z"/>
+                                    <circle cx="16" cy="12" r="3" fill="white"/>
+                                    <path d="M16 16l-2 6h4l-2-6z" fill="white"/>
+                                </svg>
+                                <span class="text-sm font-medium text-accent">AI Assistant Pro</span>
+                            </div>
+                            <div class="performance-metric text-xs">Response: ${responseTime}s</div>
+                        </div>
+                        <div class="prose prose-sm max-w-none">
+                            <p>${message}</p>
+                        </div>
+                        <div class="flex items-center justify-between mt-4 pt-3 border-t border-border-light">
+                            <div class="flex space-x-2">
+                                <button class="text-xs text-text-secondary hover:text-primary animation-swift" onclick="copyMessage(this)">Copy</button>
+                                <button class="text-xs text-text-secondary hover:text-primary animation-swift" onclick="continueConversation()">Continue</button>
+                                <button class="text-xs text-text-secondary hover:text-primary animation-swift" onclick="regenerateResponse()">Regenerate</button>
+                            </div>
+                            <div class="text-xs text-text-secondary font-mono">${timestamp} • ${responseTime}s</div>
+                        </div>
+                    </div>
+                `;
+            }
+
+            chatMessages.appendChild(messageDiv);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+
+        // Simulate AI response
+        function simulateAIResponse(userMessage) {
+            const responses = [
+                "I'd be happy to help you with that! Let me provide you with a comprehensive analysis and actionable recommendations.",
+                "Great question! Based on your requirements, here are several approaches you could consider implementing.",
+                "That's an excellent point to explore. Let me break this down into manageable steps for you.",
+                "I can definitely assist with that. Here's a detailed strategy that should address your specific needs."
+            ];
+            
+            const randomResponse = responses[Math.floor(Math.random() * responses.length)];
+            addMessageToChat(randomResponse, 'ai');
+        }
+
+        // Show/hide typing indicator with null checks
+        function showTypingIndicator() {
+            const typingIndicator = document.getElementById('typingIndicator');
+            const chatMessages = document.getElementById('chatMessages');
+            
+            if (typingIndicator) {
+                typingIndicator.classList.remove('hidden');
+            }
+            
+            if (chatMessages) {
+                chatMessages.scrollTop = chatMessages.scrollHeight;
+            }
+        }
+
+        function hideTypingIndicator() {
+            const typingIndicator = document.getElementById('typingIndicator');
+            if (typingIndicator) {
+                typingIndicator.classList.add('hidden');
+            }
+        }
+
+        // Voice input toggle
+        function toggleVoiceInput() {
+            const button = document.getElementById('voiceButton');
+            if (!button) return;
+            
+            isVoiceActive = !isVoiceActive;
+            
+            if (isVoiceActive) {
+                button.classList.add('text-accent');
+                button.classList.remove('text-text-secondary');
+                // In a real implementation, start speech recognition here
+                console.log('Voice input activated');
+            } else {
+                button.classList.remove('text-accent');
+                button.classList.add('text-text-secondary');
+                console.log('Voice input deactivated');
+            }
+        }
+
+        // Help panel toggle
+        function toggleHelp() {
+            const panel = document.getElementById('helpPanel');
+            if (panel) {
+                panel.classList.toggle('hidden');
+            }
+        }
+
+        // Conversation management functions
+        function startNewConversation() {
+            if (confirm('Start a new conversation? Current conversation will be saved to history.')) {
+                const chatMessages = document.getElementById('chatMessages');
+                const messageInput = document.getElementById('messageInput');
+                
+                if (chatMessages) {
+                    chatMessages.innerHTML = '';
+                }
+                
+                if (messageInput) {
+                    messageInput.value = '';
+                    updateCharacterCount(messageInput);
+                }
+                
+                console.log('New conversation started');
+            }
+        }
+
+        function exportConversation() {
+            console.log('Exporting conversation...');
+            // In a real implementation, this would export the conversation
+            alert('Conversation exported successfully!');
+        }
+
+        function shareConversation() {
+            console.log('Sharing conversation...');
+            // In a real implementation, this would create a shareable link
+            alert('Shareable link copied to clipboard!');
+        }
+
+        function branchConversation() {
+            console.log('Branching conversation...');
+            // In a real implementation, this would create a new branch
+            alert('Conversation branched successfully!');
+        }
+
+        function clearConversation() {
+            if (confirm('Clear current conversation? This action cannot be undone.')) {
+                const chatMessages = document.getElementById('chatMessages');
+                if (chatMessages) {
+                    chatMessages.innerHTML = '';
+                }
+                console.log('Conversation cleared');
+            }
+        }
+
+        function switchContext() {
+            console.log('Switching context...');
+            // In a real implementation, this would show context options
+            alert('Context switching options would appear here');
+        }
+
+        // Message actions
+        function copyMessage(button) {
+            const messageElement = button.closest('.chat-bubble')?.querySelector('p');
+            if (messageElement) {
+                const messageText = messageElement.textContent;
+                navigator.clipboard.writeText(messageText).then(() => {
+                    button.textContent = 'Copied!';
+                    setTimeout(() => {
+                        button.textContent = 'Copy';
+                    }, 2000);
+                });
+            }
+        }
+
+        function continueConversation() {
+            const input = document.getElementById('messageInput');
+            if (input) {
+                input.value = 'Please continue with more details...';
+                input.focus();
+                updateCharacterCount(input);
+                adjustTextareaHeight(input);
+            }
+        }
+
+        function regenerateResponse() {
+            console.log('Regenerating response...');
+            showTypingIndicator();
+            setTimeout(() => {
+                hideTypingIndicator();
+                simulateAIResponse('regenerate');
+            }, 1500);
+        }
+
+        // Smart suggestions
+        function insertSuggestion(button) {
+            const input = document.getElementById('messageInput');
+            if (input && button) {
+                input.value = button.textContent;
+                input.focus();
+                updateCharacterCount(input);
+                adjustTextareaHeight(input);
+            }
+        }
+
+        // File upload
+        function uploadFile() {
+            console.log('File upload triggered');
+            // In a real implementation, this would open file picker
+            alert('File upload functionality would be implemented here');
+        }
+
+        // Initialize page
+        document.addEventListener('DOMContentLoaded', function() {
+            // Show system status briefly
+            const statusIndicator = document.getElementById('statusIndicator');
+            if (statusIndicator) {
+                statusIndicator.classList.remove('hidden');
+                setTimeout(() => {
+                    statusIndicator.classList.add('hidden');
+                }, 3000);
+            }
+
+            // Focus on input
+            const messageInput = document.getElementById('messageInput');
+            if (messageInput) {
+                messageInput.focus();
+            }
+
+            // Show smart suggestions initially
+            setTimeout(() => {
+                const smartSuggestions = document.getElementById('smartSuggestions');
+                if (smartSuggestions) {
+                    smartSuggestions.classList.remove('hidden');
+                }
+            }, 1000);
+        });
+
+        // Close help panel when clicking outside
+        document.addEventListener('click', function(event) {
+            const helpPanel = document.getElementById('helpPanel');
+            const helpButton = document.getElementById('helpButton');
+            
+            if (helpPanel && helpButton && !helpPanel.contains(event.target) && !helpButton.contains(event.target)) {
+                helpPanel.classList.add('hidden');
+            }
+        });
+
+        // Close sidebar on mobile when clicking outside
+        document.addEventListener('click', function(event) {
+            const sidebar = document.getElementById('sidebar');
+            const sidebarToggle = event.target.closest('[onclick="toggleSidebar()"]');
+            
+            if (sidebar && window.innerWidth < 768 && !sidebar.contains(event.target) && !sidebarToggle) {
+                sidebar.classList.add('-translate-x-full');
+            }
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,1008 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>User Dashboard - AI Assistant Pro</title>
+    <link rel="stylesheet" href="../css/main.css" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<script type="module">
+(function () {
+    "use strict";
+
+    var a = window,       // current window
+        n = document,     // document
+        r = function (msg) {
+            try {
+                if (a.Rocket) {
+                    a.Rocket.Log("⚡ " + msg);
+                } else {
+                    console.log("⚡ " + msg);
+                }
+            } catch (e) { }
+        },
+        i = function (err) {
+            try {
+                if (a.Rocket) {
+                    a.Rocket.Error("🚨 " + err);
+                } else {
+                    console.error("🚨 " + err);
+                }
+            } catch (e) { }
+        };
+
+    var o = !1,  // puppeteer flag
+        u = !1,  // iframe flag
+        c = !1,  // public preview flag
+        d = !1;  // app view flag
+
+    try {
+        // Detect Puppeteer
+        if (a.navigator.webdriver) {
+            o = !0;
+        }
+
+        // Detect iframe
+        if (a.top !== a.self) {
+            u = !0;
+        }
+
+        // Detect Rocket public preview
+        if (
+            a.location &&
+            a.location.href &&
+            a.location.href.indexOf("rocket") > -1 &&
+            a.location.href.indexOf("preview") > -1
+        ) {
+            c = !0;
+        }
+
+        // Detect app view
+        if (
+            a.location &&
+            a.location.href &&
+            a.location.href.indexOf("rocket") > -1 &&
+            a.location.href.indexOf("app") > -1
+        ) {
+            d = !0;
+        }
+    } catch (e) {
+        i(e);
+    }
+
+    // Log environment
+    r("Env: puppeteer=" + o + ", iframe=" + u + ", preview=" + c + ", app=" + d);
+
+    // Utility: send Rocket event
+    function s(type, data) {
+        try {
+            if (a.Rocket) {
+                a.Rocket.Event(type, data);
+            }
+        } catch (e) {
+            i(e);
+        }
+    }
+
+    // Document ready
+    n.addEventListener("DOMContentLoaded", function () {
+        try {
+            r("DOMContentLoaded fired");
+            s("document.ready");
+        } catch (e) {
+            i(e);
+        }
+    });
+
+    // History API overrides (track SPA navigations)
+    try {
+        var origPush = history.pushState;
+        history.pushState = function () {
+            origPush.apply(this, arguments);
+            r("pushState detected");
+            s("navigation.pushState", { url: a.location.href });
+        };
+
+        var origReplace = history.replaceState;
+        history.replaceState = function () {
+            origReplace.apply(this, arguments);
+            r("replaceState detected");
+            s("navigation.replaceState", { url: a.location.href });
+        };
+
+        a.addEventListener("popstate", function () {
+            r("popstate detected");
+            s("navigation.popstate", { url: a.location.href });
+        });
+
+        a.addEventListener("hashchange", function () {
+            r("hashchange detected");
+            s("navigation.hashchange", { url: a.location.href });
+        });
+    } catch (e) {
+        i(e);
+    }
+
+    // Global error handler
+    a.onerror = function (msg, src, line, col, err) {
+        try {
+            i("window.onerror: " + msg + " at " + src + ":" + line);
+            s("error", { message: msg, source: src, line: line, col: col });
+        } catch (e) {
+            i(e);
+        }
+    };
+
+    // Unhandled promise rejection
+    a.onunhandledrejection = function (event) {
+        try {
+            i("Unhandled rejection: " + event.reason);
+            s("promise.unhandledRejection", { reason: event.reason });
+        } catch (e) {
+            i(e);
+        }
+    };
+
+    // Component error (Rocket specific)
+    a.addEventListener("__COMPONENT_ERROR__", function (ev) {
+        try {
+            i("Component error: " + ev.detail);
+            s("component.error", ev.detail);
+        } catch (e) {
+            i(e);
+        }
+    });
+
+    // Console overrides
+    (function () {
+        var origError = console.error,
+            origLog = console.log,
+            origWarn = console.warn,
+            origInfo = console.info,
+            origDebug = console.debug;
+
+        console.error = function () {
+            try {
+                s("console.error", { arguments: arguments });
+            } catch (e) { }
+            origError.apply(console, arguments);
+        };
+
+        console.log = function () {
+            try {
+                s("console.log", { arguments: arguments });
+            } catch (e) { }
+            origLog.apply(console, arguments);
+        };
+
+        console.warn = function () {
+            try {
+                s("console.warn", { arguments: arguments });
+            } catch (e) { }
+            origWarn.apply(console, arguments);
+        };
+
+        console.info = function () {
+            try {
+                s("console.info", { arguments: arguments });
+            } catch (e) { }
+            origInfo.apply(console, arguments);
+        };
+
+        console.debug = function () {
+            try {
+                s("console.debug", { arguments: arguments });
+            } catch (e) { }
+            origDebug.apply(console, arguments);
+        };
+    })();
+        // ============================================================
+    // CSS Styles for Rocket Highlighter
+    // ============================================================
+
+    var styleContent = `
+        .rocket-highlight-hover {
+            outline: 2px solid #4CAF50 !important;
+            outline-offset: 2px !important;
+        }
+        .rocket-highlight-select {
+            outline: 2px solid #FF9800 !important;
+            outline-offset: 2px !important;
+        }
+        .rocket-edit-mode {
+            cursor: crosshair !important;
+            user-select: none !important;
+        }
+    `;
+
+    var styleTag = n.createElement("style");
+    styleTag.type = "text/css";
+    styleTag.appendChild(n.createTextNode(styleContent));
+    n.head.appendChild(styleTag);
+
+    // ============================================================
+    // Highlighter + Edit Mode Logic
+    // ============================================================
+
+    var editMode = false,
+        hoveredElement = null,
+        selectedElement = null;
+
+    function enableEditMode() {
+        try {
+            r("Edit mode enabled");
+            editMode = true;
+            n.body.classList.add("rocket-edit-mode");
+            s("editMode.enabled");
+        } catch (e) {
+            i(e);
+        }
+    }
+
+    function disableEditMode() {
+        try {
+            r("Edit mode disabled");
+            editMode = false;
+            n.body.classList.remove("rocket-edit-mode");
+            clearHighlights();
+            s("editMode.disabled");
+        } catch (e) {
+            i(e);
+        }
+    }
+
+    function clearHighlights() {
+        try {
+            if (hoveredElement) {
+                hoveredElement.classList.remove("rocket-highlight-hover");
+                hoveredElement = null;
+            }
+            if (selectedElement) {
+                selectedElement.classList.remove("rocket-highlight-select");
+                selectedElement = null;
+            }
+        } catch (e) {
+            i(e);
+        }
+    }
+
+    // ============================================================
+    // Mouse Handlers (hover & select)
+    // ============================================================
+
+    n.addEventListener("mousemove", function (ev) {
+        try {
+            if (!editMode) return;
+
+            var el = ev.target;
+            if (el !== hoveredElement && el !== selectedElement) {
+                if (hoveredElement) {
+                    hoveredElement.classList.remove("rocket-highlight-hover");
+                }
+                hoveredElement = el;
+                hoveredElement.classList.add("rocket-highlight-hover");
+
+                s("element.hover", { tag: el.tagName, id: el.id, class: el.className });
+            }
+        } catch (e) {
+            i(e);
+        }
+    });
+
+    n.addEventListener("click", function (ev) {
+        try {
+            if (!editMode) return;
+
+            ev.preventDefault();
+            ev.stopPropagation();
+
+            if (selectedElement) {
+                selectedElement.classList.remove("rocket-highlight-select");
+            }
+
+            selectedElement = ev.target;
+            selectedElement.classList.add("rocket-highlight-select");
+
+            r("Element selected: " + selectedElement.tagName);
+            s("element.selected", {
+                tag: selectedElement.tagName,
+                id: selectedElement.id,
+                class: selectedElement.className,
+                text: selectedElement.innerText,
+            });
+        } catch (e) {
+            i(e);
+        }
+    }, true);
+
+    // ============================================================
+    // Escape key disables edit mode
+    // ============================================================
+
+    n.addEventListener("keydown", function (ev) {
+        try {
+            if (editMode && ev.key === "Escape") {
+                disableEditMode();
+            }
+        } catch (e) {
+            i(e);
+        }
+    });
+    // ============================================================
+    // PostMessage Communication (with parent iframe / Rocket app)
+    // ============================================================
+
+    a.addEventListener("message", function (ev) {
+        try {
+            if (!ev.data || typeof ev.data !== "object") return;
+
+            var msg = ev.data;
+
+            if (msg.type === "enableEditMode") {
+                enableEditMode();
+            }
+
+            if (msg.type === "disableEditMode") {
+                disableEditMode();
+            }
+
+            if (msg.type === "clearHighlights") {
+                clearHighlights();
+            }
+
+        } catch (e) {
+            i(e);
+        }
+    });
+
+    // ============================================================
+    // Extra Event Tracking
+    // ============================================================
+
+    // Scroll
+    a.addEventListener("scroll", function () {
+        try {
+            s("window.scroll", {
+                scrollX: a.scrollX,
+                scrollY: a.scrollY,
+            });
+        } catch (e) {
+            i(e);
+        }
+    });
+
+    // Focus & Blur
+    a.addEventListener("focus", function () {
+        try {
+            s("window.focus");
+        } catch (e) { i(e); }
+    });
+
+    a.addEventListener("blur", function () {
+        try {
+            s("window.blur");
+        } catch (e) { i(e); }
+    });
+
+    // Resize
+    a.addEventListener("resize", function () {
+        try {
+            s("window.resize", {
+                width: a.innerWidth,
+                height: a.innerHeight,
+            });
+        } catch (e) { i(e); }
+    });
+
+    // Touch events
+    a.addEventListener("touchstart", function (ev) {
+        try {
+            s("touch.start", { touches: ev.touches.length });
+        } catch (e) { i(e); }
+    });
+
+    a.addEventListener("touchend", function (ev) {
+        try {
+            s("touch.end", { touches: ev.touches.length });
+        } catch (e) { i(e); }
+    });
+
+    // ============================================================
+    // Mutation Observer (track DOM changes)
+    // ============================================================
+
+    try {
+        var observer = new MutationObserver(function (mutations) {
+            try {
+                mutations.forEach(function (mutation) {
+                    s("dom.mutation", {
+                        type: mutation.type,
+                        target: mutation.target.nodeName,
+                        addedNodes: mutation.addedNodes.length,
+                        removedNodes: mutation.removedNodes.length,
+                    });
+                });
+            } catch (e) {
+                i(e);
+            }
+        });
+
+        observer.observe(n.body, {
+            childList: true,
+            subtree: true,
+        });
+    } catch (e) {
+        i(e);
+    }
+
+    // ============================================================
+    // End of Script
+    // ============================================================
+
+})();
+
+</script>
+</head>
+<body class="bg-background text-text-primary bg-animated-gradient bg-floating-particles bg-geometric-shapes">
+    <!-- Navigation Header -->
+    <nav class="bg-white border-b border-border sticky top-0 z-50">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between items-center h-16">
+                <!-- Logo -->
+                <div class="flex items-center">
+                    <svg class="w-8 h-8 text-primary mr-3" viewBox="0 0 32 32" fill="currentColor">
+                        <path d="M16 2L3 7v10c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V7L16 2z"/>
+                        <circle cx="16" cy="12" r="3" fill="white"/>
+                        <path d="M16 16l-2 6h4l-2-6z" fill="white"/>
+                    </svg>
+                    <span class="text-xl font-bold text-primary">AI Assistant Pro</span>
+                </div>
+
+                <!-- Desktop Navigation -->
+                <div class="hidden md:flex items-center space-x-8">
+                    <a href="homepage.html" class="text-text-secondary hover:text-primary animation-swift">Home</a>
+                    <a href="chat_interface.html" class="text-text-secondary hover:text-primary animation-swift">Chat</a>
+                    <a href="features_performance.html" class="text-text-secondary hover:text-primary animation-swift">Features</a>
+                    <a href="user_dashboard.html" class="text-primary font-semibold">Dashboard</a>
+                    <a href="api_documentation.html" class="text-text-secondary hover:text-primary animation-swift">API</a>
+                    <a href="trust_security.html" class="text-text-secondary hover:text-primary animation-swift">Security</a>
+                </div>
+
+                <!-- User Profile & Actions -->
+                <div class="flex items-center space-x-4">
+                    <div class="flex items-center space-x-2">
+                        <div class="w-2 h-2 bg-accent rounded-full animate-pulse"></div>
+                        <span class="text-sm text-text-secondary hidden sm:block">Online</span>
+                    </div>
+                    <img src="https://www.freepik.com/free-vector/chatbot-chat-message-vectorart_125886829.htm#fromView=keyword&page=1&position=2&uuid=e6c50367-d3e3-4fe5-9086-073bea4ba019&query=Ai+bot" alt="Profile" class="w-10 h-10 rounded-full" onerror="this.src='https://images.unsplash.com/photo-1584824486509-112e4181ff6b?q=80&w=2940&auto=format&fit=crop&ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D'; this.onerror=null;" />
+                    <button class="md:hidden p-2 text-text-secondary">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Dashboard Header -->
+    <section class="bg-gradient-neural text-white py-12">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex flex-col md:flex-row justify-between items-start md:items-center">
+                <div>
+                    <h1 class="text-3xl md:text-4xl font-bold mb-2">Welcome back User</h1>
+                    <p class="text-blue-100 text-lg">Your personal AI command center</p>
+                </div>
+                <div class="flex items-center space-x-4 mt-4 md:mt-0">
+                    <a href="chat_interface.html" class="btn-accent">New Conversation</a>
+                    <button class="btn-secondary bg-white bg-opacity-10 text-white border-white border-opacity-30 hover:bg-opacity-20">
+                        <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 100 4m0-4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 100 4m0-4v2m0-6V4"/>
+                        </svg>
+                        Settings
+                    </button>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Performance Summary -->
+    <section class="py-8 bg-white border-b border-border">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-6">
+                <div class="text-center">
+                    <div class="performance-metric text-3xl font-bold mb-1">1.8s</div>
+                    <div class="text-text-secondary text-sm">Avg Response Time</div>
+                    <div class="text-accent text-xs mt-1">↓ 0.3s faster</div>
+                </div>
+                <div class="text-center">
+                    <div class="performance-metric text-3xl font-bold mb-1">247</div>
+                    <div class="text-text-secondary text-sm">Conversations</div>
+                    <div class="text-accent text-xs mt-1">↑ 23 this week</div>
+                </div>
+                <div class="text-center">
+                    <div class="performance-metric text-3xl font-bold mb-1">98.5%</div>
+                    <div class="text-text-secondary text-sm">Productivity Boost</div>
+                    <div class="text-accent text-xs mt-1">vs baseline</div>
+                </div>
+                <div class="text-center">
+                    <div class="performance-metric text-3xl font-bold mb-1">42h</div>
+                    <div class="text-text-secondary text-sm">Time Saved</div>
+                    <div class="text-accent text-xs mt-1">this month</div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div class="grid lg:grid-cols-3 gap-8">
+            <!-- Main Content -->
+            <div class="lg:col-span-2 space-y-8">
+                <!-- Quick Actions -->
+                <div class="card">
+                    <h2 class="text-xl font-bold mb-4">Quick Actions</h2>
+                    <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                        <a href="chat_interface.html" class="flex flex-col items-center p-4 bg-surface rounded-lg hover:bg-primary-50 animation-swift">
+                            <svg class="w-8 h-8 text-primary mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/>
+                            </svg>
+                            <span class="text-sm font-medium">New Chat</span>
+                        </a>
+                        <button class="flex flex-col items-center p-4 bg-surface rounded-lg hover:bg-primary-50 animation-swift">
+                            <svg class="w-8 h-8 text-primary mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                            </svg>
+                            <span class="text-sm font-medium">Templates</span>
+                        </button>
+                        <button class="flex flex-col items-center p-4 bg-surface rounded-lg hover:bg-primary-50 animation-swift">
+                            <svg class="w-8 h-8 text-primary mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+                            </svg>
+                            <span class="text-sm font-medium">Search</span>
+                        </button>
+                        <button class="flex flex-col items-center p-4 bg-surface rounded-lg hover:bg-primary-50 animation-swift">
+                            <svg class="w-8 h-8 text-primary mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+                            </svg>
+                            <span class="text-sm font-medium">Analytics</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Recent Conversations -->
+                <div class="card">
+                    <div class="flex justify-between items-center mb-6">
+                        <h2 class="text-xl font-bold">Recent Conversations</h2>
+                        <div class="flex items-center space-x-2">
+                            <button class="text-text-secondary hover:text-primary animation-swift">
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"/>
+                                </svg>
+                            </button>
+                            <input type="text" placeholder="Search conversations..." class="input-field text-sm w-64" />
+                        </div>
+                    </div>
+
+                    <div class="space-y-4">
+                        <!-- Conversation Item -->
+                        <div class="flex items-start space-x-4 p-4 bg-surface rounded-lg hover:bg-primary-50 animation-swift cursor-pointer">
+                            <div class="w-10 h-10 bg-primary rounded-full flex items-center justify-center">
+                                <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"/>
+                                </svg>
+                            </div>
+                            <div class="flex-1 min-w-0">
+                                <div class="flex justify-between items-start mb-1">
+                                    <h3 class="font-semibold text-text-primary truncate">React Component Optimization</h3>
+                                    <div class="flex items-center space-x-2 text-sm text-text-secondary">
+                                        <span class="performance-metric">1.2s</span>
+                                        <span>2 hours ago</span>
+                                    </div>
+                                </div>
+                                <p class="text-text-secondary text-sm mb-2">Help me optimize this React component for better performance. I'm seeing some rendering issues...</p>
+                                <div class="flex items-center space-x-2">
+                                    <span class="status-success">Development</span>
+                                    <span class="text-text-secondary text-xs">•</span>
+                                    <span class="text-text-secondary text-xs">23 messages</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Conversation Item -->
+                        <div class="flex items-start space-x-4 p-4 bg-surface rounded-lg hover:bg-primary-50 animation-swift cursor-pointer">
+                            <div class="w-10 h-10 bg-accent rounded-full flex items-center justify-center">
+                                <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+                                </svg>
+                            </div>
+                            <div class="flex-1 min-w-0">
+                                <div class="flex justify-between items-start mb-1">
+                                    <h3 class="font-semibold text-text-primary truncate">Q1 Marketing Strategy</h3>
+                                    <div class="flex items-center space-x-2 text-sm text-text-secondary">
+                                        <span class="performance-metric">2.1s</span>
+                                        <span>5 hours ago</span>
+                                    </div>
+                                </div>
+                                <p class="text-text-secondary text-sm mb-2">Create a comprehensive marketing strategy for Q1 2025 focusing on digital channels and customer acquisition...</p>
+                                <div class="flex items-center space-x-2">
+                                    <span class="status-warning">Marketing</span>
+                                    <span class="text-text-secondary text-xs">•</span>
+                                    <span class="text-text-secondary text-xs">45 messages</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Conversation Item -->
+                        <div class="flex items-start space-x-4 p-4 bg-surface rounded-lg hover:bg-primary-50 animation-swift cursor-pointer">
+                            <div class="w-10 h-10 bg-secondary rounded-full flex items-center justify-center">
+                                <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.246 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/>
+                                </svg>
+                            </div>
+                            <div class="flex-1 min-w-0">
+                                <div class="flex justify-between items-start mb-1">
+                                    <h3 class="font-semibold text-text-primary truncate">Research Paper Analysis</h3>
+                                    <div class="flex items-center space-x-2 text-sm text-text-secondary">
+                                        <span class="performance-metric">1.9s</span>
+                                        <span>1 day ago</span>
+                                    </div>
+                                </div>
+                                <p class="text-text-secondary text-sm mb-2">Analyze this research paper on machine learning applications in healthcare and summarize key findings...</p>
+                                <div class="flex items-center space-x-2">
+                                    <span class="status-success">Research</span>
+                                    <span class="text-text-secondary text-xs">•</span>
+                                    <span class="text-text-secondary text-xs">18 messages</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Conversation Item -->
+                        <div class="flex items-start space-x-4 p-4 bg-surface rounded-lg hover:bg-primary-50 animation-swift cursor-pointer">
+                            <div class="w-10 h-10 bg-primary-600 rounded-full flex items-center justify-center">
+                                <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
+                                </svg>
+                            </div>
+                            <div class="flex-1 min-w-0">
+                                <div class="flex justify-between items-start mb-1">
+                                    <h3 class="font-semibold text-text-primary truncate">Content Creation Ideas</h3>
+                                    <div class="flex items-center space-x-2 text-sm text-text-secondary">
+                                        <span class="performance-metric">1.5s</span>
+                                        <span>2 days ago</span>
+                                    </div>
+                                </div>
+                                <p class="text-text-secondary text-sm mb-2">Generate creative content ideas for our tech blog focusing on AI and productivity tools...</p>
+                                <div class="flex items-center space-x-2">
+                                    <span class="status-warning">Content</span>
+                                    <span class="text-text-secondary text-xs">•</span>
+                                    <span class="text-text-secondary text-xs">31 messages</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="mt-6 text-center">
+                        <button class="text-primary hover:text-primary-700 font-medium animation-swift">View All Conversations</button>
+                    </div>
+                </div>
+
+                <!-- Usage Analytics -->
+                <div class="card">
+                    <h2 class="text-xl font-bold mb-6">Usage Analytics</h2>
+                    
+                    <!-- Chart Placeholder -->
+                    <div class="bg-surface rounded-lg p-6 mb-6">
+                        <div class="flex justify-between items-center mb-4">
+                            <h3 class="font-semibold">Conversation Patterns</h3>
+                            <select class="input-field text-sm w-32">
+                                <option>Last 7 days</option>
+                                <option>Last 30 days</option>
+                                <option>Last 90 days</option>
+                            </select>
+                        </div>
+                        <div class="h-64 flex items-center justify-center text-text-secondary">
+                            <svg class="w-16 h-16 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+                            </svg>
+                        </div>
+                    </div>
+
+                    <!-- Analytics Grid -->
+                    <div class="grid md:grid-cols-3 gap-4">
+                        <div class="text-center p-4 bg-surface rounded-lg">
+                            <div class="text-2xl font-bold text-primary mb-1">9:30 AM</div>
+                            <div class="text-text-secondary text-sm">Peak Usage Time</div>
+                        </div>
+                        <div class="text-center p-4 bg-surface rounded-lg">
+                            <div class="text-2xl font-bold text-accent mb-1">156%</div>
+                            <div class="text-text-secondary text-sm">Productivity Increase</div>
+                        </div>
+                        <div class="text-center p-4 bg-surface rounded-lg">
+                            <div class="text-2xl font-bold text-secondary mb-1">4.2</div>
+                            <div class="text-text-secondary text-sm">Avg Session Length</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Sidebar -->
+            <div class="space-y-6">
+                <!-- Organization Tools -->
+                <div class="card">
+                    <h3 class="font-bold mb-4">Organization</h3>
+                    <div class="space-y-3">
+                        <div class="flex items-center justify-between">
+                            <div class="flex items-center space-x-2">
+                                <div class="w-3 h-3 bg-primary rounded-full"></div>
+                                <span class="text-sm">Development</span>
+                            </div>
+                            <span class="text-text-secondary text-sm">42</span>
+                        </div>
+                        <div class="flex items-center justify-between">
+                            <div class="flex items-center space-x-2">
+                                <div class="w-3 h-3 bg-accent rounded-full"></div>
+                                <span class="text-sm">Marketing</span>
+                            </div>
+                            <span class="text-text-secondary text-sm">28</span>
+                        </div>
+                        <div class="flex items-center justify-between">
+                            <div class="flex items-center space-x-2">
+                                <div class="w-3 h-3 bg-secondary rounded-full"></div>
+                                <span class="text-sm">Research</span>
+                            </div>
+                            <span class="text-text-secondary text-sm">15</span>
+                        </div>
+                        <div class="flex items-center justify-between">
+                            <div class="flex items-center space-x-2">
+                                <div class="w-3 h-3 bg-warning rounded-full"></div>
+                                <span class="text-sm">Content</span>
+                            </div>
+                            <span class="text-text-secondary text-sm">23</span>
+                        </div>
+                    </div>
+                    <button class="w-full mt-4 text-primary hover:text-primary-700 text-sm font-medium animation-swift">
+                        + Create New Folder
+                    </button>
+                </div>
+
+                <!-- Integration Status -->
+                <div class="card">
+                    <h3 class="font-bold mb-4">Integrations</h3>
+                    <div class="space-y-4">
+                        <div class="flex items-center justify-between">
+                            <div class="flex items-center space-x-3">
+                                <img src="https://images.unsplash.com/photo-1611224923853-80b023f02d71?w=24&h=24&fit=crop" alt="Slack" class="w-6 h-6 rounded" onerror="this.src='https://images.unsplash.com/photo-1584824486509-112e4181ff6b?q=80&w=2940&auto=format&fit=crop&ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D'; this.onerror=null;" />
+                                <span class="text-sm font-medium">Slack</span>
+                            </div>
+                            <div class="status-success">Connected</div>
+                        </div>
+                        <div class="flex items-center justify-between">
+                            <div class="flex items-center space-x-3">
+                                <img src="https://images.pexels.com/photos/5935791/pexels-photo-5935791.jpeg?w=24&h=24&fit=crop" alt="Notion" class="w-6 h-6 rounded" onerror="this.src='https://images.unsplash.com/photo-1584824486509-112e4181ff6b?q=80&w=2940&auto=format&fit=crop&ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D'; this.onerror=null;" />
+                                <span class="text-sm font-medium">Notion</span>
+                            </div>
+                            <div class="status-success">Connected</div>
+                        </div>
+                        <div class="flex items-center justify-between">
+                            <div class="flex items-center space-x-3">
+                                <img src="https://images.pixabay.com/photo/2021/01/30/06/42/tiktok-5962992_1280.png?w=24&h=24&fit=crop" alt="Trello" class="w-6 h-6 rounded" onerror="this.src='https://images.unsplash.com/photo-1584824486509-112e4181ff6b?q=80&w=2940&auto=format&fit=crop&ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D'; this.onerror=null;" />
+                                <span class="text-sm font-medium">Trello</span>
+                            </div>
+                            <div class="status-warning">Pending</div>
+                        </div>
+                        <div class="flex items-center justify-between">
+                            <div class="flex items-center space-x-3">
+                                <img src="https://images.unsplash.com/photo-1611224923853-80b023f02d71?w=24&h=24&fit=crop" alt="GitHub" class="w-6 h-6 rounded" onerror="this.src='https://images.unsplash.com/photo-1584824486509-112e4181ff6b?q=80&w=2940&auto=format&fit=crop&ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D'; this.onerror=null;" />
+                                <span class="text-sm font-medium">GitHub</span>
+                            </div>
+                            <div class="status-success">Connected</div>
+                        </div>
+                    </div>
+                    <button class="w-full mt-4 text-primary hover:text-primary-700 text-sm font-medium animation-swift">
+                        + Add Integration
+                    </button>
+                </div>
+
+                <!-- Performance Tracking -->
+                <div class="card">
+                    <h3 class="font-bold mb-4">Performance Trends</h3>
+                    <div class="space-y-4">
+                        <div>
+                            <div class="flex justify-between items-center mb-2">
+                                <span class="text-sm text-text-secondary">Response Time</span>
+                                <span class="performance-metric text-sm">1.8s avg</span>
+                            </div>
+                            <div class="w-full bg-surface rounded-full h-2">
+                                <div class="bg-accent h-2 rounded-full" style="width: 85%"></div>
+                            </div>
+                        </div>
+                        <div>
+                            <div class="flex justify-between items-center mb-2">
+                                <span class="text-sm text-text-secondary">Uptime</span>
+                                <span class="performance-metric text-sm">99.97%</span>
+                            </div>
+                            <div class="w-full bg-surface rounded-full h-2">
+                                <div class="bg-accent h-2 rounded-full" style="width: 99%"></div>
+                            </div>
+                        </div>
+                        <div>
+                            <div class="flex justify-between items-center mb-2">
+                                <span class="text-sm text-text-secondary">Satisfaction</span>
+                                <span class="performance-metric text-sm">4.9/5</span>
+                            </div>
+                            <div class="w-full bg-surface rounded-full h-2">
+                                <div class="bg-accent h-2 rounded-full" style="width: 98%"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Export Options -->
+                <div class="card">
+                    <h3 class="font-bold mb-4">Export & Backup</h3>
+                    <div class="space-y-3">
+                        <button class="w-full btn-secondary text-left">
+                            <svg class="w-4 h-4 mr-2 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                            </svg>
+                            Export Conversations
+                        </button>
+                        <button class="w-full btn-secondary text-left">
+                            <svg class="w-4 h-4 mr-2 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+                            </svg>
+                            Usage Report
+                        </button>
+                        <button class="w-full btn-secondary text-left">
+                            <svg class="w-4 h-4 mr-2 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"/>
+                            </svg>
+                            Backup Data
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <footer class="bg-secondary text-white py-16 mt-16">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="grid md:grid-cols-4 gap-8 mb-8">
+                <!-- Company Info -->
+                <div>
+                    <div class="flex items-center mb-4">
+                        <svg class="w-8 h-8 text-accent mr-3" viewBox="0 0 32 32" fill="currentColor">
+                            <path d="M16 2L3 7v10c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V7L16 2z"/>
+                            <circle cx="16" cy="12" r="3" fill="white"/>
+                            <path d="M16 16l-2 6h4l-2-6z" fill="white"/>
+                        </svg>
+                        <span class="text-xl font-bold">AI Assistant Pro</span>
+                    </div>
+                    <p class="text-secondary-300 mb-4">AI at the speed of thought. Unlimited conversations, lightning-fast responses.</p>
+                    <div class="flex space-x-4">
+                        <a href="javascript:void(0)" class="text-secondary-300 hover:text-accent animation-swift">
+                            <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                                <path d="M24 4.557c-.883.392-1.832.656-2.828.775 1.017-.609 1.798-1.574 2.165-2.724-.951.564-2.005.974-3.127 1.195-.897-.957-2.178-1.555-3.594-1.555-3.179 0-5.515 2.966-4.797 6.045-4.091-.205-7.719-2.165-10.148-5.144-1.29 2.213-.669 5.108 1.523 6.574-.806-.026-1.566-.247-2.229-.616-.054 2.281 1.581 4.415 3.949 4.89-.693.188-1.452.232-2.224.084.626 1.956 2.444 3.379 4.6 3.419-2.07 1.623-4.678 2.348-7.29 2.04 2.179 1.397 4.768 2.212 7.548 2.212 9.142 0 14.307-7.721 13.995-14.646.962-.695 1.797-1.562 2.457-2.549z"/>
+                            </svg>
+                        </a>
+                        <a href="javascript:void(0)" class="text-secondary-300 hover:text-accent animation-swift">
+                            <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                                <path d="M22.46 6c-.77.35-1.6.58-2.46.69.88-.53 1.56-1.37 1.88-2.38-.83.5-1.75.85-2.72 1.05C18.37 4.5 17.26 4 16 4c-2.35 0-4.27 1.92-4.27 4.29 0 .34.04.67.11.98C8.28 9.09 5.11 7.38 3 4.79c-.37.63-.58 1.37-.58 2.15 0 1.49.75 2.81 1.91 3.56-.71 0-1.37-.2-1.95-.5v.03c0 2.08 1.48 3.82 3.44 4.21a4.22 4.22 0 0 1-1.93.07 4.28 4.28 0 0 0 4 2.98 8.521 8.521 0 0 1-5.33 1.84c-.34 0-.68-.02-1.02-.06C3.44 20.29 5.7 21 8.12 21 16 21 20.33 14.46 20.33 8.79c0-.19 0-.37-.01-.56.84-.6 1.56-1.36 2.14-2.23z"/>
+                            </svg>
+                        </a>
+                        <a href="javascript:void(0)" class="text-secondary-300 hover:text-accent animation-swift">
+                            <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                                <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/>
+                            </svg>
+                        </a>
+                    </div>
+                </div>
+
+                <!-- Product Links -->
+                <div>
+                    <h4 class="font-semibold mb-4">Product</h4>
+                    <ul class="space-y-2">
+                        <li><a href="chat_interface.html" class="text-secondary-300 hover:text-accent animation-swift">Chat Interface</a></li>
+                        <li><a href="features_performance.html" class="text-secondary-300 hover:text-accent animation-swift">Features</a></li>
+                        <li><a href="api_documentation.html" class="text-secondary-300 hover:text-accent animation-swift">API</a></li>
+                        <li><a href="user_dashboard.html" class="text-secondary-300 hover:text-accent animation-swift">Dashboard</a></li>
+                    </ul>
+                </div>
+
+                <!-- Company Links -->
+                <div>
+                    <h4 class="font-semibold mb-4">Company</h4>
+                    <ul class="space-y-2">
+                        <li><a href="javascript:void(0)" class="text-secondary-300 hover:text-accent animation-swift">About</a></li>
+                        <li><a href="javascript:void(0)" class="text-secondary-300 hover:text-accent animation-swift">Careers</a></li>
+                        <li><a href="javascript:void(0)" class="text-secondary-300 hover:text-accent animation-swift">Press</a></li>
+                        <li>
+<details class="group">
+    <summary class="text-secondary-300 hover:text-accent cursor-pointer list-none" onclick="event.preventDefault()">Contacts</summary>
+    <ul class="mt-2 space-y-1 pl-4 text-secondary-300">
+        <li>+918081171673</li>
+        <li>+919026902613</li>
+        <li>+919956729397</li>
+    </ul>
+</details>
+                        </li>
+                    </ul>
+                </div>
+
+                <!-- Support Links -->
+                <div>
+                    <h4 class="font-semibold mb-4">Support</h4>
+                    <ul class="space-y-2">
+                        <li><a href="javascript:void(0)" class="text-secondary-300 hover:text-accent animation-swift">Help Center</a></li>
+                        <li><a href="trust_security.html" class="text-secondary-300 hover:text-accent animation-swift">Security</a></li>
+                        <li><a href="javascript:void(0)" class="text-secondary-300 hover:text-accent animation-swift">Privacy</a></li>
+                        <li><a href="javascript:void(0)" class="text-secondary-300 hover:text-accent animation-swift">Terms</a></li>
+                        <li class="text-secondary-300 mt-4">Contacts:</li>
+                        <li class="text-secondary-300">+918081171673</li>
+                        <li class="text-secondary-300">+919026902613</li>
+                        <li class="text-secondary-300">+919956729397</li>
+                    </ul>
+                </div>
+            </div>
+
+            <div class="border-t border-secondary-700 pt-8 flex flex-col md:flex-row justify-between items-center">
+                <p class="text-secondary-300">© 2025 AI Assistant Pro. All Rights Reserved.</p>
+                <div class="flex items-center space-x-4 mt-4 md:mt-0">
+                    <span class="text-secondary-300">Status:</span>
+                    <div class="flex items-center space-x-2">
+                        <div class="w-2 h-2 bg-accent rounded-full animate-pulse"></div>
+                        <span class="text-accent font-mono">All systems operational</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </footer>
+
+    <script>
+        // Animate cards on scroll
+        const observerOptions = {
+            threshold: 0.1,
+            rootMargin: '0px 0px -50px 0px'
+        };
+
+        const observer = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    entry.target.classList.add('animate-fade-in');
+                }
+            });
+        }, observerOptions);
+
+        document.querySelectorAll('.card').forEach(card => {
+            observer.observe(card);
+        });
+
+        // Simulate real-time updates
+        function updateMetrics() {
+            const metrics = document.querySelectorAll('.performance-metric');
+            metrics.forEach(metric => {
+                if (metric.textContent.includes('s')) {
+                    // Simulate response time fluctuation
+                    const baseTime = 1.8;
+                    const variation = (Math.random() - 0.5) * 0.4;
+                    const newTime = Math.max(1.0, baseTime + variation);
+                    metric.textContent = newTime.toFixed(1) + 's';
+                }
+            });
+        }
+
+        // Update metrics every 30 seconds
+        setInterval(updateMetrics, 30000);
+
+        // Add click handlers for conversation items
+        document.querySelectorAll('.cursor-pointer').forEach(item => {
+            item.addEventListener('click', function() {
+                // In a real app, this would navigate to the specific conversation
+                window.location.href = 'chat_interface.html';
+            });
+        });
+    </script>
+</body>
+</html>

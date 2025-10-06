@@ -1,0 +1,178 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap');
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  /* Primary Colors - Deep intelligence, trustworthy foundation */
+  --color-primary: #1E40AF; /* blue-700 */
+  --color-primary-50: #EFF6FF; /* blue-50 */
+  --color-primary-100: #DBEAFE; /* blue-100 */
+  --color-primary-200: #BFDBFE; /* blue-200 */
+  --color-primary-300: #93C5FD; /* blue-300 */
+  --color-primary-400: #60A5FA; /* blue-400 */
+  --color-primary-500: #3B82F6; /* blue-500 */
+  --color-primary-600: #2563EB; /* blue-600 */
+  --color-primary-700: #1D4ED8; /* blue-700 */
+  --color-primary-800: #1E3A8A; /* blue-800 */
+  --color-primary-900: #1E40AF; /* blue-900 */
+
+  /* Secondary Colors - Sophisticated depth, premium positioning */
+  --color-secondary: #0F172A; /* slate-900 */
+  --color-secondary-50: #F8FAFC; /* slate-50 */
+  --color-secondary-100: #F1F5F9; /* slate-100 */
+  --color-secondary-200: #E2E8F0; /* slate-200 */
+  --color-secondary-300: #CBD5E1; /* slate-300 */
+  --color-secondary-400: #94A3B8; /* slate-400 */
+  --color-secondary-500: #64748B; /* slate-500 */
+  --color-secondary-600: #475569; /* slate-600 */
+  --color-secondary-700: #334155; /* slate-700 */
+  --color-secondary-800: #1E293B; /* slate-800 */
+  --color-secondary-900: #0F172A; /* slate-900 */
+
+  /* Accent Colors - Instant response energy, success celebration */
+  --color-accent: #10B981; /* emerald-500 */
+  --color-accent-50: #ECFDF5; /* emerald-50 */
+  --color-accent-100: #D1FAE5; /* emerald-100 */
+  --color-accent-200: #A7F3D0; /* emerald-200 */
+  --color-accent-300: #6EE7B7; /* emerald-300 */
+  --color-accent-400: #34D399; /* emerald-400 */
+  --color-accent-500: #10B981; /* emerald-500 */
+  --color-accent-600: #059669; /* emerald-600 */
+  --color-accent-700: #047857; /* emerald-700 */
+  --color-accent-800: #065F46; /* emerald-800 */
+  --color-accent-900: #064E3B; /* emerald-900 */
+
+  /* Background Colors */
+  --color-background: #FAFBFC; /* custom light background */
+  --color-surface: #F1F5F9; /* slate-100 */
+
+  /* Text Colors */
+  --color-text-primary: #0F172A; /* slate-900 */
+  --color-text-secondary: #64748B; /* slate-500 */
+
+  /* Status Colors */
+  --color-success: #059669; /* emerald-600 */
+  --color-warning: #D97706; /* amber-600 */
+  --color-error: #DC2626; /* red-600 */
+
+  /* Border Colors */
+  --color-border: #E2E8F0; /* slate-200 */
+  --color-border-light: #F1F5F9; /* slate-100 */
+
+  /* Shadow Values */
+  --shadow-subtle: 0 1px 3px rgba(0, 0, 0, 0.1);
+  --shadow-modal: 0 4px 12px rgba(0, 0, 0, 0.15);
+
+  /* Animation Values */
+  --transition-swift: 250ms ease-out;
+}
+
+@layer base {
+  html {
+    font-family: 'Inter', sans-serif;
+  }
+  
+  body {
+    background-color: var(--color-background);
+    color: var(--color-text-primary);
+    line-height: 1.6;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: 'Inter', sans-serif;
+    font-weight: 600;
+    line-height: 1.2;
+  }
+
+  .font-mono {
+    font-family: 'JetBrains Mono', monospace;
+  }
+}
+
+@layer components {
+  .btn-primary {
+    @apply bg-primary text-white px-6 py-3 rounded-lg font-semibold transition-all duration-[250ms] ease-out hover:bg-primary-700 focus:ring-2 focus:ring-primary-300 focus:outline-none;
+  }
+
+  .btn-secondary {
+    @apply bg-surface text-text-primary px-6 py-3 rounded-lg font-semibold border border-border transition-all duration-[250ms] ease-out hover:bg-secondary-100 focus:ring-2 focus:ring-primary-300 focus:outline-none;
+  }
+
+  .btn-accent {
+    @apply bg-accent text-white px-6 py-3 rounded-lg font-semibold transition-all duration-[250ms] ease-out hover:bg-accent-600 focus:ring-2 focus:ring-accent-300 focus:outline-none;
+  }
+
+  .card {
+    @apply bg-white rounded-lg border border-border p-6 transition-all duration-[250ms] ease-out;
+    box-shadow: var(--shadow-subtle);
+  }
+
+  .card-hover {
+    @apply hover:shadow-lg hover:-translate-y-1;
+    box-shadow: var(--shadow-modal);
+  }
+
+  .chat-bubble {
+    @apply rounded-lg p-4 max-w-md transition-all duration-[250ms] ease-out;
+    box-shadow: var(--shadow-subtle);
+  }
+
+  .chat-bubble-user {
+    @apply bg-primary text-white ml-auto;
+  }
+
+  .chat-bubble-ai {
+    @apply bg-surface text-text-primary mr-auto;
+  }
+
+  .input-field {
+    @apply w-full px-4 py-3 border border-border rounded-lg bg-white text-text-primary placeholder-text-secondary transition-all duration-[250ms] ease-out focus:ring-2 focus:ring-primary-300 focus:border-primary focus:outline-none;
+  }
+
+  .performance-metric {
+    @apply font-mono text-accent font-medium;
+  }
+
+  .status-success {
+    @apply text-success bg-accent-50 border border-accent-200 px-3 py-1 rounded-full text-sm font-medium;
+  }
+
+  .status-warning {
+    @apply text-warning bg-amber-50 border border-amber-200 px-3 py-1 rounded-full text-sm font-medium;
+  }
+
+  .status-error {
+    @apply text-error bg-red-50 border border-red-200 px-3 py-1 rounded-full text-sm font-medium;
+  }
+}
+
+@layer utilities {
+  .text-gradient {
+    background: linear-gradient(135deg, var(--color-primary), var(--color-accent));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .bg-gradient-neural {
+    background: linear-gradient(135deg, var(--color-primary), var(--color-secondary));
+  }
+
+  .bg-gradient-velocity {
+    background: linear-gradient(135deg, var(--color-accent), var(--color-primary));
+  }
+
+  .animation-swift {
+    transition: all var(--transition-swift);
+  }
+
+  .shadow-chat {
+    box-shadow: var(--shadow-subtle);
+  }
+
+  .shadow-modal {
+    box-shadow: var(--shadow-modal);
+  }
+}

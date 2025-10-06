@@ -1,0 +1,460 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AI Assistant Pro</title>
+    <link rel="stylesheet" href="css/main.css" />
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #7C3AED 0%, #EC4899 100%);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            color: white;
+            animation: backgroundGradient 15s ease infinite;
+        }
+        
+        @keyframes backgroundGradient {
+            0% {
+                background-position: 0% 50%;
+            }
+            50% {
+                background-position: 100% 50%;
+            }
+            100% {
+                background-position: 0% 50%;
+            }
+        }
+        
+        .loading-container {
+            text-align: center;
+            animation: fadeIn 1s ease-in-out, pulse 2s infinite;
+        }
+        
+        .logo {
+            font-size: 3rem;
+            font-weight: bold;
+            margin-bottom: 1rem;
+            text-shadow: 2px 2px 8px rgba(236, 72, 153, 0.7);
+            animation: scaleIn 1s ease forwards;
+        }
+        
+        .loading-text {
+            font-size: 1.2rem;
+            margin-bottom: 2rem;
+            opacity: 0.9;
+            animation: fadeIn 2s ease forwards;
+        }
+        
+        .spinner {
+            width: 50px;
+            height: 50px;
+            border: 4px solid rgba(236, 72, 153, 0.3);
+            border-top: 4px solid #7C3AED;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.6; }
+        }
+        
+        @keyframes scaleIn {
+            0% { transform: scale(0.8); opacity: 0; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+    </style>
+    <script>
+!function () {
+    let e = !1, t = !1, n = !1;
+
+    try {
+        e = window.self === window.top;
+        t = window.self?.location?.host &&
+            (window.self.location.host.includes(".netlify.app") ||
+             window.self.location.host.includes(".public.builtwithrocket.new"));
+        n = navigator?.userAgent?.includes("Puppeteer");
+    } catch (err) {}
+
+    let o = "", i = "";
+    try {
+        const src = (function () {
+            const scripts = document.getElementsByTagName("script");
+            for (let s of scripts) if (s.src.includes("rocket-web.js")) return s.src;
+            return null;
+        })();
+        const u = new URL(src);
+        const params = new URLSearchParams(u?.search);
+        o = params.get("_cfg") || "";
+        i = params.get("_be") || "";
+    } catch (err) {}
+
+    function a(error) {
+        if (!e && !n)
+            fetch(`${o}/log-error`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(error)
+            }).catch(() => {});
+    }
+
+    function r(log) {
+        if (!e && !n)
+            fetch(`${o}/logs`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(log)
+            }).catch(() => {});
+    }
+
+    function s(cb) {
+        if (e && t && !n)
+            (function (data, done) {
+                if (i)
+                    fetch(`${i}/preview/v1/track`, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify(data)
+                    })
+                    .then(res => { if (!res.ok) throw new Error("Bad response"); return res.json(); })
+                    .then(json => { done(json); })
+                    .catch(() => {});
+            })(
+                { event: "Public Preview Viewed", baseUrl: window.location.origin, previewUrl: window.location.href },
+                result => { if (typeof cb === "function" && result?.isPublic) cb(); }
+            );
+    }
+
+    function d() {
+        if (window.parent && window.parent !== window)
+            window.parent.postMessage({ type: "WEB_IFRAME_PATHNAME_CHANGE", pathname: window.location.pathname }, "*");
+    }
+
+    function c() {
+        try {
+            const link = document.createElement("link");
+            link.rel = "stylesheet";
+            link.href = "https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap";
+            document.head.appendChild(link);
+
+            const container = document.createElement("div");
+            container.style.position = "fixed";
+            container.style.right = "0";
+            container.style.bottom = "0";
+            container.style.zIndex = "100000";
+            container.style.transform = "scale(0.7)";
+            container.style.display = "block";
+            container.style.cursor = "pointer";
+            container.onclick = () => window.open("https://www.rocket.new", "_blank");
+
+            container.innerHTML = `
+              <div style="
+                border-radius: 6px;
+                background: #fff;
+                box-shadow: 0px 0px 20px 2px rgba(0, 0, 0, 0.20);
+                display: flex;
+                padding: 4px;
+                justify-content: center;
+                align-items: center;
+                gap: 8px;
+                flex-direction: column;
+              ">
+                <div style="
+                  border: 2px solid #000;
+                  border-radius: 6px;
+                  display: flex;
+                  flex-direction: column;
+                  padding: 10px;
+                ">
+                  <img src="https://strapi.rocket.new/uploads/rocket_mono_e0dedcb10b.png" style="
+                    width: 30px;
+                    margin: auto auto 8px auto;
+                  ">
+                  <h3 style="
+                    text-align: center;
+                    font-family: Inter, sans-serif;
+                    font-size: 12px;
+                    font-weight: 500;
+                    line-height: 20px;
+                    color: #777;
+                    margin: 0;
+                  ">Built with</h3>
+                  <h3 style="
+                    font-family: Inter, sans-serif;
+                    font-size: 14px;
+                    font-weight: 500;
+                    line-height: 20px;
+                    color: #000;
+                    margin-top: -4px;
+                    margin-bottom: 0;
+                  ">Rocket.new</h3>
+                </div>
+              </div>
+            `;
+            document.body.appendChild(container);
+        } catch (err) {}
+    }
+
+    // Notify parent frame of loading events
+    if (window.parent && window.parent !== window)
+        window.parent.postMessage({ type: "WEB_IFRAME_LOADING" }, "*");
+
+    d();
+    document.addEventListener("DOMContentLoaded", () => {
+        if (window.parent && window.parent !== window)
+            window.parent.postMessage({ type: "WEB_IFRAME_DOCUMENT_LOADED" }, "*");
+        s(c);
+    });
+
+    // History API tracking
+    if (window.history && window.history.pushState) {
+        const push = window.history.pushState;
+        window.history.pushState = function () {
+            push.apply(this, arguments);
+            d(); s();
+        };
+        const replace = window.history.replaceState;
+        window.history.replaceState = function () {
+            replace.apply(this, arguments);
+            d(); s();
+        };
+        window.addEventListener("popstate", function () { d(); s(); });
+    }
+    window.addEventListener("hashchange", function () { d(); s(); });
+
+    // Error handlers
+    window.__COMPONENT_ERROR__ = function (err, info) {
+        let stack = err?.stack || null;
+        let isDup = stack && stack.includes(err.message);
+        let msg = stack ? (isDup ? stack : `${err.message}\n\n${stack}`) : err.message;
+        if (info.componentStack) msg += info.componentStack;
+        a({ errorType: "RUNTIME_ERROR", message: msg, timestamp: new Date().toISOString() });
+    };
+    window.onerror = function (msg, src, line, col, error) {
+        const stack = error?.stack || null;
+        const message = stack ? `${msg}\n\n${stack}` : msg;
+        r({ type: "CONSOLE_ERROR", message, timestamp: new Date().toISOString(), url: window.location.href });
+        a({ errorType: "RUNTIME_ERROR", message, timestamp: new Date().toISOString() });
+    };
+    window.onunhandledrejection = function (event) {
+        const msg = event.reason?.message || String(event.reason);
+        const stack = event.reason?.stack || null;
+        const message = stack ? `${msg}\n\n${stack}` : msg;
+        r({ type: "CONSOLE_ERROR", message, timestamp: new Date().toISOString(), url: window.location.href });
+        a({ errorType: "RUNTIME_ERROR", message, timestamp: new Date().toISOString() });
+    };
+
+    // Console overrides
+    const l = console.error, p = console.log, u = console.warn, m = console.info, h = console.debug;
+    function g(args) {
+        return args?.map(arg => {
+            if (arg instanceof Error) return arg.stack || arg.message;
+            if (arg instanceof HTMLElement) return arg.outerHTML;
+            if (typeof arg === "object" && arg !== null) return JSON.stringify(arg, null, 2);
+            return String(arg);
+        }).join(" ");
+    }
+    console.error = function (...args) {
+        setTimeout(() => {
+            const isBoundary = args.some(x => x?.__ErrorBoundary === true);
+            r({ type: "CONSOLE_ERROR", message: g(args), timestamp: new Date().toISOString(), url: window.location.href });
+            if (!isBoundary)
+                a({ errorType: "RUNTIME_ERROR", message: g(args), timestamp: new Date().toISOString() });
+            l.apply(console, args);
+        }, 100);
+    };
+    console.log = function (...args) { r({ type: "CONSOLE_LOG", message: g(args), timestamp: new Date().toISOString(), url: window.location.href }); p.apply(console, args); };
+    console.warn = function (...args) { r({ type: "CONSOLE_WARN", message: g(args), timestamp: new Date().toISOString(), url: window.location.href }); u.apply(console, args); };
+    console.info = function (...args) { r({ type: "CONSOLE_INFO", message: g(args), timestamp: new Date().toISOString(), url: window.location.href }); m.apply(console, args); };
+    console.debug = function (...args) { r({ type: "CONSOLE_DEBUG", message: g(args), timestamp: new Date().toISOString(), url: window.location.href }); h.apply(console, args); };
+
+    // ========================
+    // EDIT MODE + MESSAGE HANDLERS
+    // ========================
+    function L() {
+        const highlighter = document.getElementById("highlighter");
+        if (!highlighter) {
+            const div = document.createElement("div");
+            div.id = "highlighter";
+            div.style.position = "fixed";
+            div.style.pointerEvents = "none";
+            div.style.background = "black";
+            div.style.color = "white";
+            div.style.padding = "4px 8px";
+            div.style.borderRadius = "6px";
+            div.style.display = "none";
+            div.style.fontSize = "12px";
+            div.style.zIndex = "999999999";
+            document.body.appendChild(div);
+        }
+    }
+
+    window.addEventListener("message", function (evt) {
+        const { type, payload } = evt.data;
+        switch (type) {
+            case "TOGGLE_EDIT_MODE":
+                (function (enabled) {
+                    if (enabled) {
+                        L();
+                        document.addEventListener("mouseover", T, !0);
+                        document.addEventListener("mouseout", O, !0);
+                        document.addEventListener("click", _, !0);
+                    } else {
+                        E();
+                        const h = document.getElementById("highlighter");
+                        if (h) h.remove();
+                        document.removeEventListener("mouseover", T, !0);
+                        document.removeEventListener("mouseout", O, !0);
+                        document.removeEventListener("click", _, !0);
+                        w = null;
+                    }
+                })(payload);
+                break;
+            case "UPDATE_HOVERED_COMPONENT":
+                if (!payload?.componentId) return;
+                document.querySelectorAll(`[data-component-id="${payload.componentId}"]`)
+                    .forEach(el => el.setAttribute("data-component-hovered", "true"));
+                break;
+            case "REMOVE_HOVERED_COMPONENT":
+                if (!payload?.componentId) return;
+                document.querySelectorAll(`[data-component-id="${payload.componentId}"]`)
+                    .forEach(el => el.removeAttribute("data-component-hovered"));
+                break;
+            case "UPDATE_STYLES":
+                (function (data) {
+                    if (!data?.componentId || !data?.styles) return;
+                    const sel = `[data-component-id="${data.componentId}"]`,
+                          els = document.querySelectorAll(sel);
+                    const styleTag = document.getElementById("rocket-styles") || (function () {
+                        const s = document.createElement("style");
+                        s.id = "rocket-styles";
+                        document.head.appendChild(s);
+                        return s;
+                    })();
+                    let css = styleTag.innerHTML.split("\n").filter(line => !line.startsWith(sel)).join("\n");
+                    let rules = `${sel}[data-component-selected="true"] {\n`;
+                    for (const k in data.styles) rules += `${k}: ${data.styles[k]} !important;\n`;
+                    rules += "}\n";
+                    styleTag.innerHTML = css + "\n" + rules;
+                    els.forEach(el => { for (const k in data.styles) el.style[k] = data.styles[k]; });
+                })(payload);
+                break;
+            case "UPDATE_TEXT":
+                (function (data) {
+                    if (!data?.componentId || !data?.textContent) return;
+                    const sel = `[data-component-id="${data.componentId}"]`;
+                    document.querySelectorAll(sel).forEach(el => { el.innerText = data.textContent; });
+                })(payload);
+                break;
+            case "UPDATE_IMAGE":
+                (function (data) {
+                    if (!data?.componentId || !data?.imageSrc) return;
+                    const sel = `[data-component-id="${data.componentId}"]`;
+                    document.querySelectorAll(sel).forEach(el => { el.src = data.imageSrc; });
+                })(payload);
+                break;
+        }
+    });
+
+    // ========================
+    // TRACK USER INTERACTIONS
+    // ========================
+    (function () {
+        const trackEvent = (type, ev) => {
+            try {
+                const details = {
+                    eventType: type,
+                    timestamp: new Date().toISOString(),
+                    element: ev.target?.tagName || "",
+                    page: window.location.pathname
+                };
+                window.parent.postMessage({ type: "USER_INTERACTION", payload: details }, "*");
+            } catch (err) {}
+        };
+
+        const debouncedMove = (() => {
+            let timer;
+            return function (...args) {
+                clearTimeout(timer);
+                timer = setTimeout(() => {
+                    clearTimeout(timer);
+                    trackEvent("mousemove", ...args);
+                }, 10);
+            };
+        })();
+
+        document.addEventListener("mousemove", debouncedMove);
+        document.addEventListener("click", e => trackEvent("click", e));
+        document.addEventListener("dblclick", e => trackEvent("dblclick", e));
+        document.addEventListener("mouseenter", e => trackEvent("mouseenter", e));
+        document.addEventListener("mouseleave", e => trackEvent("mouseleave", e));
+        document.addEventListener("touchstart", e => trackEvent("touchstart", e));
+        document.addEventListener("touchmove", e => trackEvent("touchmove", e));
+        document.addEventListener("touchend", e => trackEvent("touchend", e));
+        document.addEventListener("keydown", e => trackEvent("keydown", e));
+
+        const inputs = ["input", "textarea", "select", "button", '[contenteditable="true"]'];
+        document.addEventListener("focusin", e => { if (inputs.some(sel => e.target.matches(sel))) trackEvent("focus", e); });
+        document.addEventListener("focusout", e => { if (inputs.some(sel => e.target.matches(sel))) trackEvent("blur", e); });
+
+        const scrollHandler = type => ev => {
+            const target = ev.target;
+            if (target === document || target === document.documentElement || target === window ||
+                target.scrollHeight > target.clientHeight || target.scrollWidth > target.clientWidth) {
+                trackEvent(type, ev);
+            }
+        };
+        const scroll = scrollHandler("scroll");
+        const scrollend = scrollHandler("scrollend");
+
+        const attachScrollListeners = () => {
+            try {
+                window.addEventListener("scroll", scroll, { passive: true });
+                window.addEventListener("scrollend", scrollend, { passive: true });
+                document.querySelectorAll("*").forEach(el => {
+                    if (el.scrollHeight > el.clientHeight || el.scrollWidth > el.clientWidth) {
+                        el.addEventListener("scroll", scroll, { passive: true });
+                        el.addEventListener("scrollend", scrollend, { passive: true });
+                    }
+                });
+            } catch (err) {}
+        };
+        attachScrollListeners();
+        new MutationObserver(() => { attachScrollListeners(); })
+            .observe(document.documentElement, { childList: true, subtree: true });
+    })();
+}();
+    </script>
+</head>
+<body class="bg-animated-gradient bg-floating-particles bg-geometric-shapes">
+    <div class="loading-container">
+        <div class="logo">AI Assistant Pro</div>
+        <div class="loading-text">Initializing your AI experience...</div>
+        <div class="spinner"></div>
+    </div>
+
+    <script>
+        // Redirect to homepage after 2 seconds
+        setTimeout(function() {
+            window.location.href = 'pages/homepage.html';
+        }, 2000);
+    </script>
+</body>
+</html>
